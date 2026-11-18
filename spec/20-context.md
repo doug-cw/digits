@@ -518,7 +518,7 @@ copy of the corpus.
 Files (exactly these 13 Markdown files plus `version.json`):
 
 ```text
-context/version.json                         {"version": "1.3.0"}
+context/version.json                         {"version": "1.4.0"}
 context/bootstrap.md
 context/README.md
 context/workflows/github-delivery.md
@@ -645,7 +645,11 @@ private bindings.
    Commands are written for the shell named in private bindings (POSIX `sh` when
    none is named). Use absolute paths; give anything local the user may click as an
    explicit absolute `file:///` link; cite the real PR, run, ticket or source.
-   Documents meant for readers are drafted locally.
+   A decision or approval the chat cannot go on without is asked with a batched
+   ask, not a question left at the end of a reply, because the Claude Code
+   dashboard flags a chat as `QUESTION` only while the question tool is open;
+   ordinary replies are for reports and open discussion. Documents meant for
+   readers are drafted locally.
    Defines the *batched ask* (italic term, used by the plugin skills): one call to
    the host's question tool, naming both `ask_user` (Copilot CLI) and
    `AskUserQuestion` (Claude Code), covering every pending decision, its questions

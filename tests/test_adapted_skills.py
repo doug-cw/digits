@@ -977,9 +977,15 @@ class HostNeutralAskTests(unittest.TestCase):
                        "`AskUserQuestion` in Claude Code",
                        "at most four questions of four options each",
                        "one numbered plain-text list", "a single reply",
-                       "never split one approval across several prompts"):
+                       "never split one approval across several prompts",
+                       "rather than a question left at the end of a reply",
+                       "the Claude Code dashboard flags a chat as `QUESTION`"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
+
+    def test_bootstrap_no_longer_asks_approvals_in_plain_text(self):
+        text = " ".join((ROOT / "context" / "bootstrap.md").read_text(encoding="utf-8").split())
+        self.assertNotIn("Ask for approval in plain text", text)
 
     def test_readme_documents_claude_allowed_tools_limit(self):
         text = " ".join((ROOT / "plugin" / "README.md").read_text(encoding="utf-8").split())

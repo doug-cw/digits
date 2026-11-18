@@ -678,6 +678,12 @@ class ClientTests(TmuxTestCase):
         self.assertEqual(self.active_window(), 8)
         for index in (3, 8):
             self.pane_set(index, "@env-copilot-state", "WORKING")
+        # A pending question comes after approvals and before YOUR TURN.
+        self.pane_set(5, "@env-copilot-state", "QUESTION")
+        self.press(client, "cmd+backquote")
+        self.assertTrue(self.wait_window(5))
+        self.pane_set(5, "@env-copilot-state", "WORKING")
+        self.tmux("select-window", "-t", self.window(8))
         for expected in (2, 6):
             self.press(client, "cmd+backquote")
             self.assertTrue(self.wait_window(expected), expected)

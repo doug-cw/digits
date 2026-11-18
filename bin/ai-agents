@@ -41,7 +41,7 @@ WINDOWS = tuple(
     for index, directory in enumerate(_DIRECTORIES, start=1)
 )
 
-ATTENTION_TIERS = ("NEEDS YOU", "YOUR TURN")
+ATTENTION_TIERS = ("NEEDS YOU", "QUESTION", "YOUR TURN")
 SESSION_OPTIONS = (
     ("base-index", "1"),
     ("destroy-unattached", "off"),

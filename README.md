@@ -170,6 +170,7 @@ shells, but conversations are not restored.
 | SUBAGENTS | Child agents are running for the chat |
 | WATCHING | The chat is waiting only on a background shell it is attached to |
 | NEEDS YOU | The chat is waiting for your input or a permission decision |
+| QUESTION | Claude Code only, in colour213: the chat asked through AskUserQuestion and is shown so while that question is open |
 | ERROR | The session reported an error, or the pane has died |
 | COPILOT / UNKNOWN | COPILOT: Copilot is running but nothing has been published yet; UNKNOWN: state tracking failed |
 | YOUR TURN | The chat finished its turn and the next move is yours |
@@ -212,8 +213,9 @@ arguments on (`digits-claude --continue`). To load the skills straight from a
 checkout, so edits take effect after `/reload-skills`, set
 `DIGITS_PLUGIN_DIR=/path/to/digits/plugin` in your shell profile.
 
-Claude Code chats show READY, WORKING, SUBAGENTS, NEEDS YOU, YOUR TURN and
-ERROR. WATCHING is not produced, and the Markdown shortcut has no session
+Claude Code chats show READY, WORKING, SUBAGENTS, NEEDS YOU, QUESTION, YOUR
+TURN and ERROR. QUESTION is shown while an AskUserQuestion prompt is open and
+clears when you answer it. WATCHING is not produced, and the Markdown shortcut has no session
 folder to open. Claude Code sends no event when you approve a permission or
 press Esc, so NEEDS YOU lasts until the next tool event (for a long-running
 approved command, until it ends), and an
@@ -239,7 +241,7 @@ for tmux.
 | Cmd+1 … Cmd+9, Cmd+0 | Go to window 1 … 10 |
 | Cmd+Shift+] / Cmd+Shift+[ | Next / previous window, wrapping around |
 | Cmd+; | Back to the previous window |
-| Cmd+` | Next chat that wants attention: NEEDS YOU before YOUR TURN, never WAITING |
+| Cmd+` | Next chat that wants attention: NEEDS YOU, then QUESTION, then YOUR TURN, never WAITING |
 | Cmd+Shift+M | Open that chat's most recent session Markdown in `md-view` |
 
 `md-view` renders Markdown in a separate VS Code instance with its own profile
