@@ -68,7 +68,7 @@ matching bucket.
 
 ### 3. One approval form
 
-Make exactly one `ask_user` call with one field per PR (or per group of PRs
+Make exactly one batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) with one question per PR (or per group of PRs
 sharing a ticket). The field description shows the evidence: bucket, CI
 status, what the automated review concluded, open human threads, caveats. The
 choices are the offered action(s) plus "Skip", with a recommended default.

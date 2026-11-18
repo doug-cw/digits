@@ -86,7 +86,7 @@ what is settled, what is open, and which objections are on the table.
 
 ### 5. Decision batch
 
-Use a single `ask_user` form that lists every pending decision (for example:
+Use a single batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) that lists every pending decision (for example:
 fix or not, file a ticket or not, where to post, whether to suppress, whom to
 notify), each with options and a recommended default. If the user replies with
 bullets, map them one by one and ask about any bullet that does not map.

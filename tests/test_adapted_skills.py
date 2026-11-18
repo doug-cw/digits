@@ -940,5 +940,53 @@ class SkillFileTests(unittest.TestCase):
                               skill_text(path.parent.name))
 
 
+BATCHED_ASK_SKILLS = (
+    "assess-and-address", "draft-pr-sweep", "investigate", "request-review",
+    "review-reactions", "self-improve", "standup-update", "update-shared-workflows",
+)
+BATCHED_ASK_POINTER = (
+    "(the Digits bootstrap's Communication rule: one `ask_user` or "
+    "`AskUserQuestion` call, or one numbered list when the decisions do not fit)"
+)
+
+
+class HostNeutralAskTests(unittest.TestCase):
+    """Skills ask through the bootstrap's batched-ask rule, not one host's tool."""
+
+    def test_skills_point_at_the_shared_rule(self):
+        for name in BATCHED_ASK_SKILLS:
+            with self.subTest(skill=name):
+                text = " ".join(skill_text(name).split())
+                self.assertIn("batched ask", text)
+                self.assertEqual(text.count(BATCHED_ASK_POINTER), 1)
+                self.assertEqual(text.count("`ask_user`"), 1, "ask_user only in the pointer")
+
+    def test_no_other_skill_names_a_single_host_tool(self):
+        for path in sorted(SKILLS.glob("*/SKILL.md")):
+            name = path.parent.name
+            if name in BATCHED_ASK_SKILLS or name == "inter-env":
+                continue
+            with self.subTest(skill=name):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn("ask_user", text)
+                self.assertNotIn("AskUserQuestion", text)
+
+    def test_bootstrap_defines_the_rule(self):
+        text = " ".join((ROOT / "context" / "bootstrap.md").read_text(encoding="utf-8").split())
+        for phrase in ("*batched ask*", "`ask_user` in Copilot CLI",
+                       "`AskUserQuestion` in Claude Code",
+                       "at most four questions of four options each",
+                       "one numbered plain-text list", "a single reply",
+                       "never split one approval across several prompts"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
+    def test_readme_documents_claude_allowed_tools_limit(self):
+        text = " ".join((ROOT / "plugin" / "README.md").read_text(encoding="utf-8").split())
+        self.assertIn("match no Claude Code tool", text)
+        self.assertIn("`Bash(gh:*)`", text)
+        self.assertNotIn("one `ask_user` question", text)
+
+
 if __name__ == "__main__":
     unittest.main()

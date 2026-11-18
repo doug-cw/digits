@@ -26,8 +26,8 @@ glance that a request already has comments, is approved, or has merged.
 
 Do not hardcode channel, user or emoji IDs. Each setting comes from the
 invocation, else the bindings file
-`~/.config/digits/context/tool-and-repo-bindings.md`, else one `ask_user`
-question covering everything still unknown:
+`~/.config/digits/context/tool-and-repo-bindings.md`, else one batched ask
+(the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) covering everything still unknown:
 
 | Key | Default |
 |---|---|
@@ -88,7 +88,7 @@ is missing, say so and stop.
 
 Check each emoji name with `slack_search_emojis` first, since workspaces define
 different custom emoji; if a primary name is rejected, offer one of its
-configured aliases. Ask once with `ask_user` whether to apply. Add reactions
+configured aliases. Ask once, in a batched ask, whether to apply. Add reactions
 only after approval: call `slack_add_reaction` (channel ID, message `ts`, emoji
 name) once per planned call, in plan order. An `already_reacted` error counts
 as success; any other error stops the run and names the post.

@@ -92,7 +92,7 @@ Any organization-specific value a skill needs is taken from, in order:
 2. the user's private bindings file
    `~/.config/digits/context/tool-and-repo-bindings.md`, which holds Markdown
    `- key: value` lines (comma-separated values for lists);
-3. otherwise, one `ask_user` prompt covering all values still unknown.
+3. otherwise, one batched ask (spec 30, section 2.1) covering all values still unknown.
 
 Skills never guess channel, user, repository, board, project, or field IDs, and
 never hardcode them. Binding keys used in this file:
@@ -200,7 +200,7 @@ Statements the body MUST make (own wording):
    approvals or other teams; and an owner. Close with exactly one
    recommendation. For long threads, start with a recap of what is decided,
    what is open, and which objections exist.
-5. **Decision batch.** One `ask_user` form lists every pending decision (for
+5. **Decision batch.** One batched ask lists every pending decision (for
    example: whether to fix, whether to file a ticket, the posting destination,
    whether to suppress, whom to notify), each with options and a recommended default. If the user answers
    with bullets, map them one at a time and ask about any that do not map.
@@ -455,7 +455,7 @@ Rules stated at the top of the body:
    `addPullRequestReviewThreadReply`; resolution uses `resolveReviewThread`.
 6. **Human items.** Nothing is posted. For each, prepare: location and
    reviewer, the point raised, the agent's assessment with evidence, the commit
-   addressing it (if any), and a proposed reply. A single `ask_user` form
+   addressing it (if any), and a proposed reply. A single batched ask
    covers all of them, with per-item choices for the reply (post / edit / skip)
    and the thread (resolve / leave open). Only the exact approved text is
    posted.
@@ -549,7 +549,7 @@ carried out by the skill that owns it.
    when `automated_review_size_limit` is configured, the diff against the
    actual base is within it. A failed pre-check moves the PR to the matching
    bucket.
-3. **Single approval form.** Exactly one `ask_user` call. One field per PR (or
+3. **Single approval form.** Exactly one batched ask. One question per PR (or
    per set of PRs sharing a ticket); the field description shows the evidence
    (bucket, CI status, what the automated review concluded, human threads still
    open, caveats); the
@@ -891,7 +891,7 @@ Usage: `/digits:update-shared-workflows [repository path] [owner/repo ...]`.
   directories and other chats' checkouts alone.
 - Shared repositories come from (1) `owner/repo` arguments given at
   invocation, else (2) the `shared_workflow_repos` binding (a comma-separated `owner/repo` list), else
-  (3) a single `ask_user` prompt. No repository list is built into the
+  (3) a single batched ask. No repository list is built into the
   helper, so each one is supplied through its own `--repo`. Existence of each is confirmed with
   `gh repo view` rather than by guessing names.
 
@@ -914,7 +914,7 @@ Usage: `/digits:update-shared-workflows [repository path] [owner/repo ...]`.
    bumps. If notes are sparse, compare the changed workflow's declared inputs
    between the two tags.
    Record the risk, the local changes required, and links.
-4. **Approval.** One `ask_user` listing, per repository: current version(s),
+4. **Approval.** One batched ask listing, per repository: current version(s),
    target version, affected files, risk, local changes. Same-major is the default
    scope. A cross-major update needs its own explicit confirmation for that
    repository, and its required local changes ship in the same change.
@@ -1086,7 +1086,7 @@ rule governing when reactions are added.
 
 1. **Configuration and identity at run time.** The body includes the literal
    `Do not hardcode` in the rule about IDs. Each setting comes from the
-   invocation, else the bindings, else a single `ask_user` question:
+   invocation, else the bindings, else a single batched ask:
    `review_channel` (shared with `request-review`; asked for when unset) and
    the three `review_reaction_*` lists (defaults in 1.4; first name is added,
    others are aliases). Identities: the chat user ID is the Slack MCP's
@@ -1115,7 +1115,7 @@ rule governing when reactions are added.
    reactions needed and reactions missing. If nothing is missing, report that
    and stop. Check each emoji name with `slack_search_emojis` first, since
    workspaces define different custom emoji; if a primary name is rejected,
-   offer one of its configured aliases. Ask once through `ask_user` whether to
+   offer one of its configured aliases. Ask once through a batched ask whether to
    apply. Once approved, invoke `slack_add_reaction` (arguments: channel ID,
    message `ts`, emoji name) once per planned call, following plan order. The `already_reacted` error counts as success; any other error
    halts the run and identifies the post.

@@ -19,8 +19,8 @@ chat history come from outside the plugin.
 ## Configuration
 
 Resolve values from (1) command arguments, (2) the private bindings file
-`~/.config/digits/context/tool-and-repo-bindings.md`, (3) one `ask_user` question
-for everything still missing. Never guess site, cloud or project IDs.
+`~/.config/digits/context/tool-and-repo-bindings.md`, (3) one batched ask
+(the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) for everything still missing. Never guess site, cloud or project IDs.
 
 | Key | Default |
 |---|---|

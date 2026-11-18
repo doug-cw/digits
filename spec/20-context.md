@@ -518,7 +518,7 @@ copy of the corpus.
 Files (exactly these 13 Markdown files plus `version.json`):
 
 ```text
-context/version.json                         {"version": "1.0.0"}
+context/version.json                         {"version": "1.1.0"}
 context/bootstrap.md
 context/README.md
 context/workflows/github-delivery.md
@@ -645,7 +645,15 @@ private bindings.
    Commands are written for the shell named in private bindings (POSIX `sh` when
    none is named). Use absolute paths; give anything local the user may click as an
    explicit absolute `file:///` link; cite the real PR, run, ticket or source.
-   Approval prompts are plain text. Documents meant for readers are drafted locally.
+   Documents meant for readers are drafted locally.
+   Defines the *batched ask* (italic term, used by the plugin skills): one call to
+   the host's question tool, naming both `ask_user` (Copilot CLI) and
+   `AskUserQuestion` (Claude Code), covering every pending decision, its questions
+   and options in plain text without Markdown (tables, links, bold, code fences); when the
+   decisions do not fit one call (Claude Code's limit of four questions of four
+   options each is stated), one numbered plain-text list with options and a
+   recommended default per item, answered in a single reply; one approval is never
+   split across several prompts.
    Normal length is one or two short paragraphs, more only for a requested plan or
    report or genuine complexity. Do not narrate routine tool calls or restate
    unchanged caveats.
@@ -1987,7 +1995,7 @@ Schema: a JSON array of objects, each with exactly these keys:
 Tested invariants: each route names an existing file under `context/`, and each route
 string occurs literally in `bootstrap.md`. Prompts and expectations are prose for
 human/model evaluation (not asserted by unit tests) and must be written fresh. The
-file contains these 35 cases, in this order:
+file contains these 36 cases, in this order:
 
 | # | `id` | Prompt intent (paraphrase) | `routes` | Expected behavior (paraphrase) |
 |---|---|---|---|---|
@@ -2026,6 +2034,7 @@ file contains these 35 cases, in this order:
 | 33 | `local-link-click` | Clicking a printed path in tmux does nothing; disable tmux mouse mode to fix links. | `references/workspace-and-terminal.md` | Give explicit absolute `file:///` links and the click modifier the terminal documents; leave tmux mouse support on. |
 | 34 | `unrelated-small-question` | (negative control) How does Python's `enumerate` work? One short example. | `[]` | Answer directly; open no context page. |
 | 35 | `unrelated-shell-one-liner` | (negative control) What does `ls -la` show? | `[]` | Answer directly; fetch no data, issue-tracker or infrastructure page. |
+| 36 | `batched-ask-overflow` | Seven pending decisions, each with three options, in a host whose question tool takes four questions. | `[]` | One numbered plain-text list with options and a recommended default per item, answered in a single reply; never several prompts for one approval. |
 
 ## 17. Private-binding templates (`examples/private-bindings/`)
 

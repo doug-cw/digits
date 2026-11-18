@@ -92,7 +92,7 @@ If a human has commented in the thread, do not reply there.
 
 Post nothing. For each item prepare: location and reviewer, the point raised,
 your assessment with evidence, the commit that addresses it (if any), and a
-proposed reply. Present them all in one `ask_user` form with per-item choices
+proposed reply. Present them all in one batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) with per-item choices
 for the reply (post / edit / skip) and the thread (resolve / leave open). Post
 only the exact approved text.
 
