@@ -552,8 +552,8 @@ Bulleted:
 - tmux; Python 3.9+; Node.js; GitHub Copilot CLI (link
   `https://docs.github.com/en/copilot/how-tos/copilot-cli`).
 - The login shell the launcher opens in every environment, as fixed by
-  `10-workbench.md` (fish in the reference, so fish is listed with that
-  reason).
+  `10-workbench.md` (fish when installed, otherwise `$SHELL`, so fish is
+  listed as optional with that reason).
 - Optional extras: Ghostty (`https://ghostty.org/`) for the keyboard
   shortcuts; Visual Studio Code for the `md-view` viewer.
 

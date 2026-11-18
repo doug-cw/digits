@@ -54,6 +54,9 @@ HOME = Path.home()
 CONFIG = HOME / ".tmux" / "ai-agents.conf"
 TMUX = shutil.which("tmux") or "tmux"
 FISH = shutil.which("fish")
+# Used when fish is absent: the login shell from $SHELL, if it is an absolute
+# path to an executable file.
+LOGIN_SHELL = os.environ.get("SHELL") or None
 
 
 class LauncherError(Exception):
@@ -94,8 +97,18 @@ def lock_path():
     return Path(HOME) / "Library" / "Caches" / "env-sync" / "ai-agents.lock"
 
 
+def environment_shell():
+    """fish when installed, else the user's login shell; None when neither."""
+    if FISH:
+        return FISH
+    shell = LOGIN_SHELL
+    if shell and os.path.isabs(shell) and os.path.isfile(shell) and os.access(shell, os.X_OK):
+        return shell
+    return None
+
+
 def _shell_command():
-    return ["/usr/bin/env", "-u", "VIRTUAL_ENV", str(FISH), "-l"]
+    return ["/usr/bin/env", "-u", "VIRTUAL_ENV", str(environment_shell()), "-l"]
 
 
 def _require_managed():
@@ -136,8 +149,10 @@ def ensure_session():
         path = Path(HOME) / directory
         if path.is_symlink() or not path.is_dir():
             raise LauncherError("Missing independent environment: {}".format(path))
-    if missing and not FISH:
-        raise LauncherError("fish is required to create environment shells; install fish first")
+    if missing and not environment_shell():
+        raise LauncherError(
+            "A login shell is required to create environment shells; install fish or set SHELL"
+        )
 
     command = _shell_command()
     remaining = missing

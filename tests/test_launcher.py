@@ -828,9 +828,10 @@ class LauncherEdgeTests(TmuxTestCase):
         self.ensure()
         self.assertEqual(self.listing(), before)
 
-    def test_74_fish_required_only_for_new_windows(self):
+    def test_74_shell_required_only_for_new_windows(self):
         self.launcher.FISH = None
-        with self.assertRaisesRegex(self.launcher.LauncherError, "fish is required"):
+        self.launcher.LOGIN_SHELL = None
+        with self.assertRaisesRegex(self.launcher.LauncherError, "login shell is required"):
             self.ensure()
         self.assertNotIn("ai-agents", self.tmux("list-sessions", "-F", "#{session_name}").split())
         self.launcher.FISH = "/bin/sh"
@@ -839,6 +840,20 @@ class LauncherEdgeTests(TmuxTestCase):
         self.launcher.FISH = None
         self.ensure()
         self.assertEqual(self.listing(), before)
+
+    def test_89_login_shell_used_when_fish_is_absent(self):
+        self.launcher.FISH = None
+        for unusable in ("sh", str(self.root / "no-such-shell")):
+            self.launcher.LOGIN_SHELL = unusable
+            self.assertIsNone(self.launcher.environment_shell())
+        self.launcher.LOGIN_SHELL = "/bin/sh"
+        self.assertEqual(self.launcher.environment_shell(), "/bin/sh")
+        self.ensure()
+        # /bin/sh may be bash in disguise (macOS), so accept any plain shell.
+        self.assertTrue(poll(lambda: self.evaluate(1, "#{pane_current_command}") in ("sh", "bash", "dash")))
+        self.launcher.FISH = "/bin/sh"
+        self.launcher.LOGIN_SHELL = str(self.root / "no-such-shell")
+        self.assertEqual(self.launcher.environment_shell(), "/bin/sh")
 
     def test_75_missing_configuration(self):
         result = self.run_cli("--no-attach")
