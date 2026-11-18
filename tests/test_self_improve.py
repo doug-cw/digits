@@ -474,7 +474,7 @@ class SkillTextTests(unittest.TestCase):
 EXPECTED_SKILLS = {
     "standup-update", "request-review", "review-reactions", "draft-pr-sweep", "assess-and-address",
     "rebase-pr", "update-shared-workflows", "investigate", "challenge-pass", "inter-env",
-    "self-improve", "done", "summarize",
+    "self-improve", "done", "summarize", "token-usage",
 }
 
 
@@ -484,7 +484,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(list(manifest), ["$schema", "name", "version", "description", "license"])
         self.assertEqual(manifest["$schema"], "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json")
         self.assertEqual(manifest["name"], "digits")
-        self.assertEqual(manifest["version"], "1.0.1")
+        self.assertEqual(manifest["version"], "1.0.2")
         self.assertTrue(manifest["description"].strip())
         self.assertNotIn("\n", manifest["description"])
 
@@ -507,7 +507,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(entries[0]["version"], manifest["version"])
         self.assertEqual(entries[0]["source"], "./plugin")
 
-    def test_thirteen_skills_with_frontmatter(self):
+    def test_fourteen_skills_with_frontmatter(self):
         directories = sorted(p.name for p in SKILLS.iterdir() if p.is_dir())
         self.assertEqual(set(directories), EXPECTED_SKILLS)
         for name in directories:

@@ -905,7 +905,7 @@ class SkillFileTests(unittest.TestCase):
 
     def test_every_skill_name_matches_directory(self):
         skill_files = sorted(SKILLS.glob("*/SKILL.md"))
-        self.assertEqual(len(skill_files), 13, [p.parent.name for p in skill_files])
+        self.assertEqual(len(skill_files), 14, [p.parent.name for p in skill_files])
         for path in skill_files:
             name = path.parent.name
             with self.subTest(skill=name):
