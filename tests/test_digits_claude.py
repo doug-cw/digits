@@ -51,6 +51,37 @@ class DigitsClaudeTests(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertEqual(argv, ["-p", "hi"], folder)
 
+    def test_environments_root_variable(self):
+        root = self.tmp / "agents"
+        (root / "right_ring").mkdir(parents=True)
+        (self.home / "right_ring").mkdir()
+        code, argv, _ = self.run_in(root / "right_ring", AI_AGENTS_ROOT=str(root))
+        self.assertEqual((code, argv), (0, ["-n", "right-ring"]))
+        code, argv, _ = self.run_in(self.home / "right_ring", AI_AGENTS_ROOT=str(root))
+        self.assertEqual((code, argv), (0, []))
+        (self.home / "agents" / "left_ring").mkdir(parents=True)
+        code, argv, _ = self.run_in(self.home / "agents" / "left_ring", AI_AGENTS_ROOT="~/agents")
+        self.assertEqual((code, argv), (0, ["-n", "left-ring"]))
+
+    def test_environments_root_must_be_absolute_and_exist(self):
+        folder = self.home / "left_thumb"
+        folder.mkdir()
+        code, argv, err = self.run_in(folder, AI_AGENTS_ROOT="relative/agents")
+        self.assertEqual((code, argv), (1, []))
+        self.assertIn("AI_AGENTS_ROOT must be an absolute path", err)
+        code, argv, err = self.run_in(folder, AI_AGENTS_ROOT=str(self.tmp / "nowhere"))
+        self.assertEqual((code, argv), (1, []))
+        self.assertIn("AI_AGENTS_ROOT is not an existing directory", err)
+        code, argv, err = self.run_in(folder, AI_AGENTS_ROOT="~nobody/agents")
+        self.assertEqual((code, argv), (1, []))
+        self.assertIn("AI_AGENTS_ROOT must be an absolute path", err)
+        for unsafe in (str(self.tmp) + "\\agents", str(self.tmp) + "/a\nb", str(self.tmp) + "/a\tb",
+                       str(self.tmp) + "/a\x7fb"):
+            with self.subTest(root=unsafe):
+                code, argv, err = self.run_in(folder, AI_AGENTS_ROOT=unsafe)
+                self.assertEqual((code, argv), (1, []))
+                self.assertIn("must not contain a backslash or control characters", err)
+
     def test_plugin_dir(self):
         folder = self.home / "left_thumb"
         folder.mkdir()

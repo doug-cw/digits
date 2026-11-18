@@ -518,7 +518,7 @@ copy of the corpus.
 Files (exactly these 13 Markdown files plus `version.json`):
 
 ```text
-context/version.json                         {"version": "1.5.0"}
+context/version.json                         {"version": "1.6.0"}
 context/bootstrap.md
 context/README.md
 context/workflows/github-delivery.md
@@ -1975,8 +1975,9 @@ Links and approval dialogs:
 Environment identity:
 
 - List the ten roots with brace notation under the home placeholder: a `left_` set and
-  a `right_` set, each covering `thumb`, `pointer`, `middle`, `ring`, `pinky`; every
-  root is one tmux window in the dashboard. Clones inside them are full and independent
+  a `right_` set, each covering `thumb`, `pointer`, `middle`, `ring`, `pinky`, unless
+  the launcher was given another parent directory with `AI_AGENTS_ROOT` or `--root`;
+  every root is one tmux window in the dashboard. Clones inside them are full and independent
   — never turn them into worktrees or assume branch or dirty state is shared. Roots
   share a list of repositories, not edits; a newly added repository might be absent
   from some roots. Confirm the exact checkout of this environment before editing.

@@ -38,7 +38,7 @@ versions. Issues and pull requests are welcome.
 ## Requirements
 
 - macOS, the only platform Digits is tested on.
-- [tmux](https://github.com/tmux/tmux).
+- [tmux](https://github.com/tmux/tmux) 3.2 or later.
 - Python 3.9 or newer.
 - Node.js.
 - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), or
@@ -151,7 +151,20 @@ when it is already running.
 | 4 | `left_pointer` | 9 | `right_ring` |
 | 5 | `left_thumb` | 10 | `right_pinky` |
 
-Each environment is a separate directory in your home folder. Put a distinct
+Each environment is a separate directory in your home folder by default. To
+keep them somewhere else, set `AI_AGENTS_ROOT` to an absolute path (for
+example `export AI_AGENTS_ROOT=~/Code/agents` in your shell profile) or pass
+`--root DIR` (with `ai-agents` or `ai-agents --no-attach` only); `--root` wins
+over the variable. Only `~` and `~/…` are expanded, and a root with a
+backslash or a control character is refused. The launcher only checks the ten
+directories exist there, so create them yourself: the installer still creates
+them in your home. Every shell the launcher creates starts with
+`AI_AGENTS_ROOT` set to the root, and the root is also exported to the tmux
+session for panes you open later, so `digits-claude` (and `ai-agents
+--restart`) finds the same environments. A running session keeps its root:
+a plain `ai-agents` reuses it, and a different root is refused until you
+kill the session with `tmux kill-session -t ai-agents` (this ends every chat
+in the session). Put a distinct
 clone in each one (never worktrees that share a repository) and start Copilot
 by hand wherever you want a chat.
 

@@ -10,9 +10,37 @@
 #
 #   DIGITS_PLUGIN_DIR  plugin folder to load with --plugin-dir (for example a
 #                      checkout's plugin/); unset: rely on an installed plugin
+#   AI_AGENTS_ROOT     folder holding the environments (default: $HOME); an
+#                      existing absolute path after expanding a leading ~ or
+#                      ~/ (not ~user), without backslashes or control characters
 #   DIGITS_CLAUDE      the Claude Code command to run (default: claude)
 
-root=$(cd "$HOME" 2>/dev/null && pwd -P) || root=
+if [ -n "${AI_AGENTS_ROOT:-}" ]; then
+    case "$AI_AGENTS_ROOT" in
+        *[[:cntrl:]]* | *\\*)
+            echo "digits-claude: AI_AGENTS_ROOT must not contain a backslash or control characters" >&2
+            exit 1
+            ;;
+    esac
+    setting=$AI_AGENTS_ROOT
+    case "$setting" in
+        "~" | "~/"*) setting=$HOME${setting#"~"} ;;
+    esac
+    case "$setting" in
+        /*) ;;
+        *)
+            echo "digits-claude: AI_AGENTS_ROOT must be an absolute path, not '$AI_AGENTS_ROOT'" >&2
+            exit 1
+            ;;
+    esac
+    if [ ! -d "$setting" ]; then
+        echo "digits-claude: AI_AGENTS_ROOT is not an existing directory: $setting" >&2
+        exit 1
+    fi
+    root=$(cd "$setting" && pwd -P) || root=
+else
+    root=$(cd "$HOME" 2>/dev/null && pwd -P) || root=
+fi
 here=$(pwd -P)
 environment=
 if [ -n "$root" ]; then
