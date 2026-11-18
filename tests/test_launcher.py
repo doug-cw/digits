@@ -949,6 +949,244 @@ class LauncherEdgeTests(TmuxTestCase):
         self.assertEqual(len(self.calls(marker)), 0)
 
 
+class RestartTests(TmuxTestCase):
+    """``--restart`` against a stub chat that draws Claude Code's composer."""
+
+    def setUp(self):
+        super().setUp()
+        self.chat_calls = self.root / "chat-calls.jsonl"
+        stub = self.bin / "digits-claude"
+        stub.write_text(
+            "#!{python}\n"
+            "import json, os, subprocess, sys, uuid\n"
+            "pane = os.environ['TMUX_PANE']\n"
+            "if os.path.exists('fail-start'):\n"
+            "    sys.exit(1)\n"
+            "with open({calls!r}, 'a') as handle:\n"
+            "    handle.write(json.dumps({{'args': sys.argv[1:], 'pane': pane,"
+            " 'cwd': os.getcwd()}}) + '\\n')\n"
+            "for option, value in (('@env-dashboard-owner', str(uuid.uuid4())),"
+            " ('@env-copilot-state', 'READY')):\n"
+            "    subprocess.run([{tmux!r}, 'set-option', '-p', '-t', pane, option, value])\n"
+            "body = '\\x1b[2mTry \"fix lint\"\\x1b[0m'\n"
+            "if os.path.exists('draft.txt'):\n"
+            "    body = open('draft.txt').read().strip()\n"
+            "rule = '\\u2500' * 40\n"
+            "screen = '\\x1b[2J\\x1b[H' + rule + '\\n\\u276f\\u00a0' + body + '\\n' + rule + '\\n'\n"
+            "sys.stdout.buffer.write(screen.encode('utf-8'))\n"
+            "sys.stdout.flush()\n"
+            "for line in sys.stdin:\n"
+            "    if line.strip() == '/exit':\n"
+            "        break\n".format(
+                python=sys.executable, calls=str(self.chat_calls), tmux=str(self.wrapper)
+            )
+        )
+        stub.chmod(0o755)
+        self.tmux("set-environment", "-g", "HOME", str(self.home))
+        self.tmux("set-environment", "-g", "PATH", self.env["PATH"])
+        # Should a real digits-claude ever be found first, it must not start Claude Code.
+        self.tmux("set-environment", "-g", "DIGITS_CLAUDE", "/usr/bin/false")
+        for name, value in (
+            ("KEY_PAUSE", 0.1), ("SHELL_PAUSE", 0.5), ("SETTLE", 0), ("POLL", 0.05), ("CONFIRM", 0.5),
+            ("EXIT_TIMEOUT", TIMEOUT), ("START_TIMEOUT", TIMEOUT), ("CLAUDE_CONFIG_DIR", None),
+        ):
+            setattr(self.launcher, name, value)
+        self.launcher.RESOURCE_CHECK = lambda: (True, "")
+        self.launcher._ancestor_pids = lambda: set()
+        # tmux gives the first pane the creating client's environment.
+        with mock.patch.dict(os.environ, {"PATH": self.env["PATH"], "HOME": str(self.home),
+                                          "DIGITS_CLAUDE": "/usr/bin/false"}):
+            self.ensure()
+
+    def start_chat(self, index):
+        self.tmux("send-keys", "-t", self.window(index), "-l", "digits-claude")
+        self.tmux("send-keys", "-t", self.window(index), "Enter")
+        self.assertTrue(poll(lambda: self.pane_get(index, "@env-copilot-state") == "READY"),
+                        self.tmux("capture-pane", "-p", "-t", self.window(index)))
+        self.assertTrue(poll(lambda: "\u2500" * 40 in self.tmux("capture-pane", "-p", "-t", self.window(index))))
+
+    def chat_starts(self):
+        if not self.chat_calls.exists():
+            return []
+        return [json.loads(line) for line in self.chat_calls.read_text().splitlines()]
+
+    def restart(self, *names):
+        with contextlib.redirect_stdout(io.StringIO()) as out, \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            code = self.launcher.main(["--restart", *names])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_97_restarts_idle_chats_and_skips_the_rest(self):
+        slug = re.sub(r"[^A-Za-z0-9]", "-", str(self.home / "left_ring"))
+        projects = self.home / ".claude" / "projects" / slug
+        projects.mkdir(parents=True)
+        (projects / "earlier.jsonl").write_text("{}\n")
+        (self.home / "left_pointer" / "draft.txt").write_text("half a thought")
+        for index in (2, 3, 4, 5, 6):
+            self.start_chat(index)
+        self.pane_set(5, "@env-copilot-state", "WORKING")
+        own = int(self.evaluate(6, "#{pane_pid}"))
+        self.launcher._ancestor_pids = lambda: {own}
+        panes = {index: self.evaluate(index, "#{pane_id}") for index in range(1, 11)}
+
+        code, out, err = self.restart()
+
+        self.assertEqual(code, 0, err)
+        lines = out.splitlines()
+        self.assertEqual(lines[:6], [
+            "Left Pinky: skipped, no chat running",
+            "Left Ring: restarted, continuing its conversation",
+            "Left Middle: restarted, new conversation",
+            "Left Pointer: skipped, the composer is not empty (a draft, or no composer visible)",
+            "Left Thumb: skipped, busy (WORKING)",
+            "Right Thumb: skipped, this is the chat running the restart",
+        ])
+        self.assertTrue(all(line.endswith("no chat running") for line in lines[6:]), lines)
+        self.assertEqual(len(lines), 10)
+        self.assertTrue(poll(lambda: len(self.chat_starts()) == 7))
+        starts = {}
+        for call in self.chat_starts():
+            starts.setdefault(call["pane"], []).append(call["args"])
+        self.assertEqual(starts[panes[2]], [[], ["--continue"]])
+        self.assertEqual(starts[panes[3]], [[], []])
+        for index in (4, 5, 6):
+            self.assertEqual(starts[panes[index]], [[]])
+        self.assertEqual({index: self.evaluate(index, "#{pane_id}") for index in range(1, 11)}, panes)
+        for index in (2, 3):
+            command = self.evaluate(index, "#{pane_current_command}")
+            self.assertNotIn(command, self.launcher.SHELL_COMMANDS)
+
+    def test_98_named_environments_and_resource_gate(self):
+        self.start_chat(9)
+        self.start_chat(10)
+        self.launcher.RESOURCE_CHECK = lambda: (False, "memory 12% free")
+        code, out, err = self.restart("right-ring")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, "Right Ring: skipped, resources busy: memory 12% free\n")
+        self.assertEqual(len(self.chat_starts()), 2)
+
+        self.launcher.RESOURCE_CHECK = lambda: (True, "")
+        code, out, err = self.restart("Right Pinky", "right_pinky")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(out, "Right Pinky: restarted, new conversation\n")
+        self.assertTrue(poll(lambda: len(self.chat_starts()) == 3))
+
+        code, out, err = self.restart("thumb")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("ai-agents: unknown environment 'thumb'; use one of: left-pinky", err)
+
+    def test_99_chat_that_will_not_exit_is_a_failure(self):
+        self.start_chat(2)
+        self.launcher.EXIT_TIMEOUT = 0.5
+        self.launcher.KEY_PAUSE = 0
+        real = self.launcher.tmux
+
+        def no_exit(*args):
+            if args[:1] == ("send-keys",) and "/exit" in args:
+                args = args[:-1] + ("/still-here",)
+            return real(*args)
+
+        self.launcher.tmux = no_exit
+        code, out, _err = self.restart("left-ring")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "Left Ring: failed, the chat did not exit within 0.5s\n")
+
+        self.launcher.tmux = real
+        self.launcher.EXIT_TIMEOUT = TIMEOUT
+        (self.home / "left_ring" / "fail-start").write_text("")
+        code, out, _err = self.restart("left-ring")
+        self.assertEqual(code, 1)
+        self.assertEqual(out, "Left Ring: failed, the new chat exited straight away; see the pane\n")
+
+
+class RestartUnitTests(unittest.TestCase):
+    def setUp(self):
+        self.launcher = load_module(
+            REPO / "bin/ai-agents", "ai_agents_restart_{}".format(next(_COUNTER))
+        )
+
+    def test_100_composer_state(self):
+        rule = "\x1b[38;5;244m" + "\u2500" * 30 + "\x1b[39m"
+        footer = "  \x1b[38;5;246m? for shortcuts\x1b[39m"
+
+        def screen(*body):
+            return "\n".join(["earlier output", "", rule, *body, rule, footer])
+
+        cases = (
+            (screen("\x1b[38;5;246m\u276f\u00a0\x1b[39m"), "empty"),
+            (screen("\u276f \x1b[2mTry \"refactor\"\x1b[0m"), "empty"),
+            (screen("\u276f \x1b[2mTry \"refactor\"\x1b[22m"), "empty"),
+            (screen("> "), "empty"),
+            (screen("\u276f I think"), "text"),
+            (screen("\u276f \x1b[2mTry\x1b[0m x"), "text"),
+            (screen("\u276f first line", "  second line"), "text"),
+            (screen("plain output"), "unknown"),
+            ("no composer here\n$ ", "unknown"),
+            (rule + "\n" + rule, "unknown"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(self.launcher.composer_state(text), expected)
+
+    def test_101_which_chats_are_left_alone(self):
+        session = "8ecd4711-a300-4907-9f19-1574950e7e66"
+        check = self.launcher._check_restartable
+        check("10", "2.1.327", "READY", session, "0", set())
+        check("10", "claude", "YOUR TURN", session, "0", {1, 2})
+        cases = (
+            (("10", "claude", "READY", session, "1", set()), "pane is dead"),
+            (("10", "claude", "READY", session, "0", {10}), "running the restart"),
+            (("10", "zsh", "READY", session, "0", set()), "no chat running"),
+            (("10", "copilot", "READY", "4242", "0", set()), "Copilot CLI chat"),
+            (("10", "vim", "", "", "0", set()), "not a Claude Code chat (vim)"),
+            (("10", "claude", "NEEDS YOU", session, "0", set()), "busy (NEEDS YOU)"),
+            (("10", "claude", "QUESTION", session, "0", set()), "busy (QUESTION)"),
+            (("10", "claude", "", session, "0", set()), "busy (no state)"),
+        )
+        for args, reason in cases:
+            with self.subTest(args=args):
+                with self.assertRaisesRegex(self.launcher.Skipped, re.escape(reason)):
+                    check(*args)
+
+    def test_102_conversation_lookup(self):
+        root = Path(os.path.realpath(tempfile.mkdtemp(prefix="digits-restart-")))
+        self.addCleanup(shutil.rmtree, str(root), True)
+        folder = root / "home" / "left_ring"
+        folder.mkdir(parents=True)
+        self.launcher.HOME = root / "home"
+        self.launcher.CLAUDE_CONFIG_DIR = None
+        self.assertFalse(self.launcher.has_conversation(str(folder)))
+        projects = root / "home" / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(folder))
+        projects.mkdir(parents=True)
+        self.assertFalse(self.launcher.has_conversation(str(folder)))
+        (projects / "a.jsonl").write_text("{}\n")
+        self.assertTrue(self.launcher.has_conversation(str(folder)))
+        self.launcher.CLAUDE_CONFIG_DIR = str(root / "elsewhere")
+        self.assertFalse(self.launcher.has_conversation(str(folder)))
+
+    def test_103_resource_gate(self):
+        launcher = self.launcher
+        with mock.patch.object(launcher, "_memory_free_percent", return_value=29), \
+                mock.patch.object(launcher.os, "getloadavg", return_value=(0.1, 0, 0)):
+            self.assertEqual(launcher.default_resource_check(), (False, "memory 29% free"))
+        with mock.patch.object(launcher, "_memory_free_percent", return_value=None), \
+                mock.patch.object(launcher.os, "cpu_count", return_value=4), \
+                mock.patch.object(launcher.os, "getloadavg", return_value=(4.0, 0, 0)):
+            self.assertEqual(launcher.default_resource_check(), (False, "load 4.0 on 4 cores"))
+        with mock.patch.object(launcher, "_memory_free_percent", return_value=30), \
+                mock.patch.object(launcher.os, "cpu_count", return_value=4), \
+                mock.patch.object(launcher.os, "getloadavg", return_value=(3.9, 0, 0)):
+            self.assertEqual(launcher.default_resource_check(), (True, ""))
+
+    def test_104_restart_is_exclusive_with_other_modes(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                self.launcher._parse(["--restart", "--no-attach"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(self.launcher._parse(["--restart"]).restart, [])
+        self.assertIsNone(self.launcher._parse([]).restart)
+
+
 class MarkdownViewerTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(os.path.realpath(tempfile.mkdtemp(prefix="digits-mdview-")))

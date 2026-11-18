@@ -2,7 +2,7 @@
 
 Status: normative for the clean-room build. Read `00-overview.md` first; its
 conventions (Python 3.9 standard library, Node.js 22 ES modules, bash helpers,
-isolated tests, no hardcoded home paths, plugin version `1.0.4`, names) apply here.
+isolated tests, no hardcoded home paths, plugin version `1.0.5`, names) apply here.
 
 This file specifies:
 
@@ -73,7 +73,7 @@ catalog `.github/plugin/marketplace.json` (its single `digits` entry has
 
 ### 1.2 Packaging rules (MUST)
 
-1. Exactly fourteen skill directories exist under `plugin/skills/`, each holding
+1. Exactly fifteen skill directories exist under `plugin/skills/`, each holding
    one `SKILL.md`. The directory name equals the skill's `name` frontmatter value.
    Names are bare (no `digits:` or `digits-` prefix); the CLI adds the `digits:`
    command namespace from the plugin name, so users type `/digits:<name>`.
@@ -112,7 +112,7 @@ A JSON object with exactly these five keys, in this order:
 |---|---|---|
 | 1 | `$schema` | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
 | 2 | `name` | `digits` |
-| 3 | `version` | `1.0.4` (must equal the marketplace entry's `version`) |
+| 3 | `version` | `1.0.5` (must equal the marketplace entry's `version`) |
 | 4 | `description` | One sentence, freshly worded, naming these capability areas: guarded Copilot CLI workflows for evidence-backed standup drafts; review requests and review-status reactions; PR feedback handling; draft PR sweeps; rebases; shared workflow version updates; investigations; coordination across environments; proposal-first improvement of the shared context. |
 | 5 | `license` | `MIT` |
 
@@ -147,7 +147,7 @@ settings.
 ### 1.4 Skill frontmatter conventions (MUST)
 
 Every `SKILL.md` begins with a YAML frontmatter block delimited by `---` lines at
-the very start of the file. Rules common to all fourteen:
+the very start of the file. Rules common to all fifteen:
 
 - `name:` is the first key and equals the directory name.
 - `description:` is a single non-empty line. It states what the skill does and
@@ -164,7 +164,7 @@ After the frontmatter, each body starts with a level-1 heading, then a
 Size: the self-improve `SKILL.md` MUST be at most 190 lines (tested). Spec 40
 applies the same limit to its seven skills.
 
-### 1.5 The fourteen skills
+### 1.5 The fifteen skills
 
 | # | Directory / `name` | Purpose (one line, for README and routing) | Spec |
 |---|---|---|---|
@@ -182,6 +182,7 @@ applies the same limit to its seven skills.
 | 12 | `done` | User-only: recap the chat, mark it `[DONE]`, open a fresh session | 30 |
 | 13 | `summarize` | Read-only four-part status recap of the current chat (aims, what got done, open decisions, upcoming actions), also stored as a file in the session workspace | 30 |
 | 14 | `token-usage` | Read-only token usage and estimated list-price cost per task, project, branch, environment, model or day, from local Claude Code transcripts | 30 |
+| 15 | `restart-chats` | Claude Code only: restart idle chats in the ten windows one at a time through `ai-agents --restart`, so they pick up a changed shell profile or plugin | 30 (§11a), 10 (§3.8) |
 
 ---
 
@@ -245,7 +246,7 @@ sections in this order, with the listed facts.
 
 1. **Title and introduction.** States that this is the Copilot-facing part of
    Digits in Agent Plugins 1.0 format and that it ships complete guarded
-   workflows. A table with one row per skill (all fourteen, in the order of
+   workflows. A table with one row per skill (all fifteen, in the order of
    section 1.5) giving the command `/digits:<name>` and a one-line summary of
    bundled behavior. A short note that it is a personal workflow package, not
    organization policy, and that no organization defaults are built in.
@@ -254,7 +255,7 @@ sections in this order, with the listed facts.
    `copilot plugin marketplace add <path-or-repo>`; second
    `copilot plugin install digits@digits`; third `copilot plugin list --json`;
    fourth `copilot skill list --json`. Expected result: the plugin list shows `digits` once,
-   enabled, and the skill list shows each of the fourteen names (listed) exactly
+   enabled, and the skill list shows each of the fifteen names (listed) exactly
    once with source `plugin`. Explains that the plugin supplies the `digits:` namespace, is
    installed once at user scope (not once per environment), and leaves built-in
    and third-party skills untouched. Mentions that pointing `COPILOT_HOME` at a
@@ -1533,6 +1534,25 @@ history, never presses keys other than the literal message plus one `Enter` or
 
 ---
 
+## 11a. Skill `restart-chats`
+
+Frontmatter: `name: restart-chats`, a one-line description naming the trigger
+phrases, `user-invocable: true`. The body (heading, then
+`Usage: /digits:restart-chats [environment...]`) MUST convey:
+
+1. It works for Claude Code chats only and delegates everything to one run of
+   `ai-agents --restart [environment...]` (spec 10 §3.8), whose output is shown
+   unchanged. No loop or retry.
+2. What the launcher skips (busy, drafts, plain shells, Copilot chats, the
+   calling chat, resource gate) and what a restart does (`/exit`, fresh login
+   shell, `digits-claude --continue` when a conversation exists).
+3. Afterwards: a one- or two-line summary; the calling chat restarts itself
+   only by the user's hand (`/exit`, `exec $SHELL -l`,
+   `digits-claude --continue`); skipped chats are never typed into to clear
+   them; a missing `ai-agents` is reported, never worked around with keys.
+
+---
+
 ## 12. Skill `self-improve` and helper `checkpoint.py`
 
 ### 12.1 Frontmatter (MUST)
@@ -2030,17 +2050,17 @@ subprocesses or stubs, and no network, real tmux server or real home.
 
 ### 14.A Package
 
-1. **Fourteen skills registered.** Given a temporary `COPILOT_HOME` and the
+1. **Fifteen skills registered.** Given a temporary `COPILOT_HOME` and the
    repository as a local marketplace, when the user adds the marketplace
    (`copilot plugin marketplace add <repo>`), installs (`copilot plugin install
    digits@digits`), and lists plugins (`copilot plugin list --json`) and skills
    (`copilot skill list --json`), then exactly one
-   enabled plugin `digits` is listed and exactly fourteen skills with source
+   enabled plugin `digits` is listed and exactly fifteen skills with source
    `plugin` from it are listed, one per name of section 1.5, each invocable as
    `/digits:<name>` (manual integration check requiring the Copilot CLI).
 2. Given `plugin/skills`, then every `*/SKILL.md` starts with a frontmatter block
    whose `name` equals its directory and whose `description` is one non-empty
-   line; exactly fourteen such directories exist.
+   line; exactly fifteen such directories exist.
 3. Given `plugin.json`, then it has exactly the keys `$schema`, `name`,
    `version`, `description`, `license` with the values of section 1.3, and `version` equals
    the `digits` entry's version in `.github/plugin/marketplace.json`.

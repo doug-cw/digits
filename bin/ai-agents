@@ -6,16 +6,19 @@ environment directory under your home. The launcher creates missing windows,
 refuses to touch anything it does not recognise, applies the dashboard
 configuration and attaches. It also implements the dashboard shortcuts for
 jumping to the next chat needing attention and opening a chat's newest
-session Markdown.
+session Markdown, and restarts idle Claude Code chats so they pick up a
+changed shell profile or plugin.
 """
 
 import argparse
 import fcntl
 import os
+import re
 import shutil
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 SESSION = "ai-agents"
@@ -54,6 +57,24 @@ HOME = Path.home()
 CONFIG = HOME / ".tmux" / "ai-agents.conf"
 TMUX = shutil.which("tmux") or "tmux"
 FISH = shutil.which("fish")
+# Claude Code's configuration folder; None means <HOME>/.claude.
+CLAUDE_CONFIG_DIR = os.environ.get("CLAUDE_CONFIG_DIR") or None
+# The command typed into a pane to start a chat (see claude/bin/digits-claude).
+CHAT_COMMAND = "digits-claude"
+# Claude Code drops an Enter that arrives together with typed text.
+KEY_PAUSE = 1.0
+# Time for a freshly exec'd login shell to read its profile.
+SHELL_PAUSE = 2.0
+# Pause after one chat starts before restarting the next.
+SETTLE = 5.0
+EXIT_TIMEOUT = 30.0
+# How long a new chat must keep running to count as started.
+CONFIRM = 3.0
+START_TIMEOUT = 30.0
+POLL = 0.25
+# Replaceable resource gate: a function returning (ok, detail), or None for
+# the default memory and load check.
+RESOURCE_CHECK = None
 # Used when fish is absent: the login shell from $SHELL, if it is an absolute
 # path to an executable file.
 LOGIN_SHELL = os.environ.get("SHELL") or None
@@ -309,6 +330,220 @@ def show_markdown(pane, client=None):
         message(lines[-1] if lines else "md-view failed")
 
 
+# --- restarting chats ------------------------------------------------------
+
+SHELL_COMMANDS = ("fish", "zsh", "bash", "sh", "dash", "ksh")
+RESTARTABLE_STATES = ("READY", "YOUR TURN")
+_SESSION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_SGR = re.compile(r"\x1b\[[0-9;:?]*m")
+# Dim text (Claude Code's composer placeholder), up to the attribute reset.
+_DIM = re.compile(r"\x1b\[2m.*?(?:\x1b\[(?:0|22)?m|$)")
+_RULE = re.compile(r"\s*─{8,}.*")
+_PROMPTS = ("❯", "›", ">")
+
+
+class Skipped(Exception):
+    """A chat that is left alone, with the reason."""
+
+
+def composer_state(screen):
+    """Classify Claude Code's composer in a ``capture-pane -e`` dump.
+
+    Returns ``"empty"`` when the box between the last two horizontal rules
+    holds only the prompt (and dim placeholder text), ``"text"`` when it
+    holds a draft, and ``"unknown"`` when no composer box is visible.
+    """
+    lines = [line for line in screen.splitlines() if line.strip()]
+    rules = [i for i, line in enumerate(lines) if _RULE.fullmatch(_SGR.sub("", line))]
+    if len(rules) < 2 or rules[-1] - rules[-2] < 2:
+        return "unknown"
+    body = lines[rules[-2] + 1:rules[-1]]
+    text = " ".join(_SGR.sub("", _DIM.sub("", line)).strip() for line in body).strip()
+    for prompt in _PROMPTS:
+        if text.startswith(prompt):
+            text = text[len(prompt):].strip()
+            break
+    else:
+        return "unknown"
+    return "empty" if not text else "text"
+
+
+def resolve_environments(names):
+    """Map user-given names (``left-ring``, ``left_ring``, ``Left Ring``) to windows."""
+    if not names:
+        return list(WINDOWS)
+    by_key = {window[1]: window for window in WINDOWS}
+    chosen = []
+    for name in names:
+        key = re.sub(r"[\s-]+", "_", name.strip().lower())
+        if key not in by_key:
+            raise LauncherError(
+                "unknown environment {!r}; use one of: {}".format(
+                    name, ", ".join(d.replace("_", "-") for d in _DIRECTORIES)
+                )
+            )
+        if by_key[key] not in chosen:
+            chosen.append(by_key[key])
+    return sorted(chosen)
+
+
+def _ancestor_pids():
+    """This process and its ancestors, so the launcher never restarts its own chat."""
+    pids = set()
+    pid = os.getpid()
+    while pid > 1 and pid not in pids:
+        pids.add(pid)
+        result = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True,
+        )
+        try:
+            pid = int(result.stdout.strip())
+        except ValueError:
+            break
+    return pids
+
+
+def _memory_free_percent():
+    try:
+        result = subprocess.run(
+            ["memory_pressure"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+        )
+    except OSError:
+        return None
+    match = re.search(r"free percentage:\s*(\d+)%", result.stdout)
+    return int(match.group(1)) if match else None
+
+
+def default_resource_check():
+    """Enough free memory (30% or more) and a one-minute load below the core count."""
+    free = _memory_free_percent()
+    if free is not None and free < 30:
+        return False, "memory {}% free".format(free)
+    load = os.getloadavg()[0]
+    cores = os.cpu_count() or 1
+    if load >= cores:
+        return False, "load {:.1f} on {} cores".format(load, cores)
+    return True, ""
+
+
+def claude_projects():
+    base = Path(CLAUDE_CONFIG_DIR) if CLAUDE_CONFIG_DIR else Path(HOME) / ".claude"
+    return base / "projects"
+
+
+def has_conversation(folder):
+    """True when Claude Code has a saved conversation for ``folder``."""
+    slug = re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(folder))
+    directory = claude_projects() / slug
+    return directory.is_dir() and any(directory.glob("*.jsonl"))
+
+
+def _pane_command(pane):
+    return tmux("display-message", "-p", "-t", pane, "#{pane_current_command}")
+
+
+def _wait_for(pane, predicate, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
+        command = _pane_command(pane)
+        if predicate(command):
+            return command
+        if time.monotonic() > deadline:
+            return None
+        time.sleep(POLL)
+
+
+def _check_restartable(pane_pid, command, state, owner, dead, own):
+    if dead == "1":
+        raise Skipped("pane is dead")
+    if int(pane_pid) in own:
+        raise Skipped("this is the chat running the restart")
+    if command in SHELL_COMMANDS:
+        raise Skipped("no chat running")
+    if command == "copilot":
+        raise Skipped("Copilot CLI chat; only Claude Code chats are restarted")
+    if not _SESSION_ID.fullmatch(owner):
+        raise Skipped("not a Claude Code chat ({})".format(command))
+    if state not in RESTARTABLE_STATES:
+        raise Skipped("busy ({})".format(state or "no state"))
+
+
+def restart_chat(pane, shell):
+    """Exit the chat in ``pane``, reload the login shell and start a chat again."""
+    tmux("send-keys", "-t", pane, "-l", "/exit")
+    time.sleep(KEY_PAUSE)
+    tmux("send-keys", "-t", pane, "Enter")
+    if _wait_for(pane, lambda c: c in SHELL_COMMANDS, EXIT_TIMEOUT) is None:
+        raise LauncherError("the chat did not exit within {:g}s".format(EXIT_TIMEOUT))
+    folder = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}")
+    tmux("send-keys", "-t", pane, "-l", "exec /usr/bin/env -u VIRTUAL_ENV {} -l".format(shell))
+    tmux("send-keys", "-t", pane, "Enter")
+    time.sleep(SHELL_PAUSE)
+    if _wait_for(pane, lambda c: c in SHELL_COMMANDS, EXIT_TIMEOUT) is None:
+        raise LauncherError("the login shell did not start within {:g}s".format(EXIT_TIMEOUT))
+    resume = has_conversation(folder)
+    tmux("send-keys", "-t", pane, "-l", CHAT_COMMAND + (" --continue" if resume else ""))
+    tmux("send-keys", "-t", pane, "Enter")
+    if _wait_for(pane, lambda c: c not in SHELL_COMMANDS, START_TIMEOUT) is None:
+        raise LauncherError("no chat started within {:g}s".format(START_TIMEOUT))
+    time.sleep(CONFIRM)
+    if _pane_command(pane) in SHELL_COMMANDS:
+        raise LauncherError("the new chat exited straight away; see the pane")
+    return "restarted, continuing its conversation" if resume else "restarted, new conversation"
+
+
+def restart_chats(names):
+    """Restart idle Claude Code chats one at a time; return the number of failures."""
+    _require_managed()
+    windows = resolve_environments(names)
+    shell = environment_shell()
+    if not shell:
+        raise LauncherError(
+            "A login shell is required to restart chats; install fish or set SHELL"
+        )
+    own = _ancestor_pids()
+    check = RESOURCE_CHECK or default_resource_check
+    failures = 0
+    restarted = False
+    for index, _directory, name in windows:
+        window = "{}{}".format(TARGET, index)
+        try:
+            fields = tmux(
+                "display-message", "-p", "-t", window,
+                "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t"
+                "#{@env-copilot-state}\t#{@env-dashboard-owner}\t#{pane_dead}",
+            ).split("\t")
+        except LauncherError as error:
+            print("{}: skipped, {}".format(name, error))
+            continue
+        pane, pane_pid, command, state, owner, dead = fields
+        try:
+            _check_restartable(pane_pid, command, state, owner, dead, own)
+            screen = tmux("capture-pane", "-p", "-e", "-t", pane)
+            if "esc to interrupt" in _SGR.sub("", screen):
+                raise Skipped("busy (the chat shows esc to interrupt)")
+            if composer_state(screen) != "empty":
+                raise Skipped("the composer is not empty (a draft, or no composer visible)")
+            if restarted and SETTLE:
+                time.sleep(SETTLE)
+            ok, detail = check()
+            if not ok:
+                raise Skipped("resources busy: {}".format(detail))
+        except Skipped as reason:
+            print("{}: skipped, {}".format(name, reason))
+            continue
+        try:
+            outcome = restart_chat(pane, shell)
+        except LauncherError as error:
+            print("{}: failed, {}".format(name, error))
+            failures += 1
+            continue
+        restarted = True
+        print("{}: {}".format(name, outcome))
+    return failures
+
+
 def _parse(argv):
     parser = argparse.ArgumentParser(
         prog="ai-agents",
@@ -318,6 +553,10 @@ def _parse(argv):
     modes.add_argument("--no-attach", action="store_true", help="prepare the session without attaching")
     modes.add_argument("--next-attention", action="store_true", help="select the next chat needing attention")
     modes.add_argument("--markdown", metavar="PANE", help="open the newest session Markdown of a tmux pane")
+    modes.add_argument(
+        "--restart", nargs="*", metavar="ENV",
+        help="restart idle Claude Code chats (all, or the named environments, e.g. left-ring)",
+    )
     parser.add_argument("--client", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -329,6 +568,8 @@ def main(argv=None):
             focus_next_attention()
         elif args.markdown is not None:
             show_markdown(args.markdown, args.client)
+        elif args.restart is not None:
+            return 1 if restart_chats(args.restart) else 0
         else:
             ensure_locked()
             if args.no_attach:

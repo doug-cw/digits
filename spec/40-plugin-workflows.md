@@ -1,6 +1,6 @@
 # Digits plugin: workflow skills and their helpers
 
-This file specifies seven of the fourteen plugin skills, the three Python
+This file specifies seven of the fifteen plugin skills, the three Python
 helpers that ship with them, and the Python test module that covers them. The
 plugin manifest, lifecycle extensions, the remaining skills (`inter-env`,
 `self-improve`, `summarize`, `done`, `standup-update`, `request-review`), and
@@ -1327,7 +1327,7 @@ section 9 with `me = "me"` and the fixed `now`.
     exactly `---`, `name: <dir>`, a non-empty one-line `description:`,
     `user-invocable: true`, `---`, and has at most 190 lines.
 14. **Every skill's name matches its directory.** For every
-    `plugin/skills/*/SKILL.md` (all fourteen), the frontmatter block exists at
+    `plugin/skills/*/SKILL.md` (all fifteen), the frontmatter block exists at
     the start of the file, contains the line `name: <directory>`, and contains a
     `description:` line whose value starts with a non-space character.
 15. **Write gates stay documented.** Each phrase in the table of 1.3 occurs
