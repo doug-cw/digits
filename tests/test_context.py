@@ -609,7 +609,7 @@ class CorpusTests(unittest.TestCase):
 
     def test_14_expected_files(self):
         self.assertEqual(set(self.pages()), EXPECTED_PAGES)
-        self.assertEqual(json.loads((CONTEXT / "version.json").read_text()), {"version": "1.5.0"})
+        self.assertEqual(json.loads((CONTEXT / "version.json").read_text()), {"version": "1.6.0"})
 
     def test_14_line_limit_and_metadata(self):
         for name, path in self.pages().items():

@@ -38,7 +38,8 @@ Python standard library. Neither has a `.py` suffix; tests load them by path.
   command aimed at the session: `=ai-agents:` (window `N` is `=ai-agents:N`).
 - Session marker: session user option `@ai-agents-managed` with value `1`.
   Only a session carrying this marker is treated as managed.
-- Window table (index, environment directory under `HOME`, window name). The
+- Window table (index, environment directory under the environments root
+  (section 3.1), window name). The
   window name is the directory name with `_` replaced by a space and each word
   capitalised:
 
@@ -99,14 +100,25 @@ the **idle label set**; the dashboard treats every member as `YOUR TURN`.
 | `ai-agents --next-attention` | Jump to the next chat needing attention (3.4). No lock, no session creation |
 | `ai-agents --markdown PANE [--client CLIENT]` | Open the newest session Markdown of tmux pane `PANE` (3.5). No lock, no session creation |
 | `ai-agents --restart [ENV...]` | Restart idle Claude Code chats, all ten or the named environments (3.8). No lock, no session creation |
+| `ai-agents [--no-attach] --root DIR` | Ensure (and attach unless `--no-attach`) with `DIR` as the environments root. Only these two invocations take `--root`: with `--next-attention`, `--markdown` or `--restart` it is a usage error (exit 2) |
 
 - `--no-attach`, `--next-attention`, `--markdown` and `--restart` are mutually exclusive;
   combining them is an argument-parser usage error (exit 2, usage on stderr).
 - `--client NAME` is accepted with any mode but hidden from `--help`; it is only
   meaningful with `--markdown`, where status messages are shown on that client.
 - `--help` prints a one-line description of the tool (wording free).
+- Environments root: `--root DIR`, else `$AI_AGENTS_ROOT` when non-empty (either
+  is a *given* root), else the root an existing session exported (3.2 step 3),
+  else `HOME`. A value containing a backslash or a control character (newline
+  included) fails with `<source> must not contain a backslash or control
+  characters`. Otherwise only a leading `~` or `~/` is replaced by `HOME`
+  (`~user` forms are not expanded and so are not absolute); the result must be
+  absolute (else `<source> must be an absolute path, not '<value>'`, where
+  `<source>` is `--root` or `AI_AGENTS_ROOT`) and an existing directory (else
+  `<source> is not an existing directory: <path>`). `HOME` is not checked.
 
-The tmux executable is the first `tmux` on `PATH`, falling back to the bare
+tmux 3.2 or later is required: `new-session -e` arrived in 3.2 (`new-window -e`
+in 3.0). The tmux executable is the first `tmux` on `PATH`, falling back to the bare
 name `tmux`. The fish executable is the first `fish` on `PATH`, or absent.
 The login shell is the value of `SHELL`, or absent. The **environment shell**
 is fish when present; otherwise the login shell, when it is an absolute path
@@ -137,13 +149,22 @@ Ensure performs, in order:
      not exactly `1`, fail with a message that contains the word `unmanaged`
      and states that the session will not be modified. Nothing is changed.
    - Read its windows as (index, name) pairs.
+   - Read the session's exported `AI_AGENTS_ROOT` (`show-environment`). When it
+     has one and no root is given, use it; it is validated as in 3.1 only when
+     a window has to be created (step 5), so a stale export never blocks a
+     plain reattach, and a failed validation adds the kill hint below. When a
+     given root is not the same directory (`os.path.samefile` when both exist,
+     else equal real paths), fail with a message naming both roots and the kill
+     hint: `kill the session first with tmux kill-session -t ai-agents (this
+     ends every chat in the session)`; the session's windows already live under
+     its root. Nothing is changed.
 4. Every existing window must have an index from 1 to 10 **and** exactly the
    expected name for that index. Otherwise fail with a message beginning
    `Unexpected window ` followed by the target (`=ai-agents:<index>`), the
    actual name, and a refusal to replace it. An extra window (index 0, 11, …)
    or a renamed window therefore blocks the launcher. Nothing is changed.
 5. The **missing** windows are the indices 1–10 not present (all ten for a new
-   session). For each missing window, `HOME/<directory>` must be an existing
+   session). For each missing window, `<environments root>/<directory>` must be an existing
    directory that is not a symlink; otherwise fail with a message containing
    `Missing independent environment:` and the path. All these checks finish
    before anything is created.
@@ -153,13 +174,17 @@ Ensure performs, in order:
 7. Each new shell runs the command `/usr/bin/env -u VIRTUAL_ENV <shell> -l`,
    where `<shell>` is the environment shell (a login shell with `VIRTUAL_ENV`
    removed, so a virtualenv active in the launching shell does not leak in). Its start directory (`-c`) is the
-   environment directory.
+   environment directory, and it is created with `-e AI_AGENTS_ROOT=<root>`, so
+   every shell the launcher creates, window 1 included, has the root.
 8. New session only: create it detached with the first missing window
    (window 1's name and directory), printing that window's id; then set the
    session option `@ai-agents-managed` to `1` immediately.
 9. Always set these **session-scoped** options on `=ai-agents:` (global options
    are never touched): `base-index 1`, `destroy-unattached off`,
-   `renumber-windows off`, `mouse on`.
+   `renumber-windows off`, `mouse on`. Then export the resolved environments
+   root to the session (`set-environment -t =ai-agents AI_AGENTS_ROOT <root>`),
+   so panes opened later in the session, and `digits-claude` in them, find
+   their environment too.
 10. New session only: if the first window's index is not 1 (because the server's
     global `base-index` differs), move it to index 1.
 11. Create each remaining missing window, detached, at its exact index
@@ -250,7 +275,8 @@ never a candidate.
 
 The launcher MUST be importable as a module from its path (without executing
 `main`) and expose replaceable module-level hooks that every function reads at
-call time: the home directory, the configuration path, the fish executable
+call time: the home directory, the environments root given by `--root` (`ROOT`,
+`None` when not given), the configuration path, the fish executable
 path, the login shell path, the function that runs one tmux command and
 returns stripped stdout, and the function that lists session names. It MUST also expose the window table,
 the session name, the target prefix, and callable entry points for ensure,
@@ -286,7 +312,9 @@ A chat keeps the environment of the shell it started from, so a profile change
    core count), checked just before each restart.
 3. Restart: type `/exit`, pause (1 s; Claude Code drops an Enter sent with the
    text), press Enter; wait up to 30 s for a plain shell; type
-   `exec /usr/bin/env -u VIRTUAL_ENV <environment shell> -l` and Enter; after
+   `exec /usr/bin/env -u VIRTUAL_ENV <environment shell> -l` and Enter (with
+   `AI_AGENTS_ROOT=<root>` before the shell, shell-quoted, when the session
+   environment holds that variable, so the restarted chat keeps its root); after
    2 s wait for a plain shell again; type `digits-claude --continue` when
    `<CLAUDE_CONFIG_DIR or HOME/.claude>/projects/<slug>/` holds a `*.jsonl`
    file (slug: the pane's resolved current path with every character other
@@ -706,8 +734,11 @@ with these arguments, in order:
    folder has no `.claude-plugin/plugin.json`, print an error naming
    `DIGITS_PLUGIN_DIR` and exit 1 without starting anything.
 2. `-n <name>` when the physical working directory is one of the ten
-   environment folders directly under the home folder (`$HOME`, resolved
-   physically) or below one. The name is the folder name
+   environment folders directly under the environments root (`$AI_AGENTS_ROOT`,
+   else `$HOME`, resolved physically) or below one. A non-empty
+   `AI_AGENTS_ROOT` has a leading `~` expanded and must then be absolute and an
+   existing directory; otherwise print an error naming `AI_AGENTS_ROOT` and exit
+   1 without starting anything. The name is the folder name
    with `_` replaced by `-` (`left_pinky` → `left-pinky`). Elsewhere, including
    look-alike folders such as `left_pinky_old` or an environment name deeper in
    the tree, no name is passed.
@@ -1533,6 +1564,32 @@ empty, print `No file changes needed.`
     reported as failed and the exit status is 1.
 100–104. Composer classification, skip reasons, conversation lookup, the
     resource gate and mode exclusivity are unit-tested.
+105. Given the ten environments under another directory, `AI_AGENTS_ROOT` set
+    to it opens every window there, and a relative value fails with
+    `AI_AGENTS_ROOT must be an absolute path`.
+106. `--root` wins over `AI_AGENTS_ROOT`; a relative `--root` fails with
+    `ai-agents: --root must be an absolute path`, and a variable naming a
+    missing directory fails with `is not an existing directory`; both exit 1.
+107. Given a root whose name holds a space, `'`, `$` and a backtick, a freshly
+    created session's window 1 and window 10 shells have `AI_AGENTS_ROOT` set
+    to it, `show-environment -t =ai-agents AI_AGENTS_ROOT` prints it, and a
+    pane split later has it. A restart types `AI_AGENTS_ROOT=<root>`
+    (shell-quoted, so `sh` reads back the same string) into the `exec` line,
+    and nothing extra when the session has no root.
+108. With no root given, an existing session keeps its exported root (a
+    recreated window opens under it); the same root given again is accepted,
+    also through a symlink (or another letter case on a case-insensitive
+    volume); a stale exported root does not block a reattach with nothing to
+    create but fails, with the kill hint, once a window must be created;
+    a different `--root` or `AI_AGENTS_ROOT` fails with a message naming both
+    roots, `kill the session first` and `this ends every chat in the session`,
+    and the export is unchanged.
+109. `~` and `~/agents` expand to `HOME`; `~nobody/agents` fails as not
+    absolute; a root with a backslash, newline, tab or DEL (launcher and
+    `digits-claude`) fails with `must not
+    contain a backslash or control characters`.
+110. `--root` is accepted alone and with `--no-attach`; with `--restart`,
+    `--next-attention` or `--markdown` it is a usage error (exit 2).
 
 ### 11.6 Markdown viewer
 
@@ -1627,8 +1684,10 @@ empty, print `No file changes needed.`
     invalid input it exits 0 and changes nothing; run as an executable it
     writes nothing to stderr.
 96. Launch command (section 5a.3): every environment, and a folder below one,
-    gets its `-n` name with arguments passed on in order; the home folder itself,
-    a look-alike folder, a nested environment name and a folder outside the home
-    folder get none; `DIGITS_PLUGIN_DIR` adds
+    gets its `-n` name with arguments passed on in order; the environments root
+    itself, a look-alike folder, a nested environment name and a folder outside
+    the environments root get none; `AI_AGENTS_ROOT` moves the root (with `~` and
+    `~/` expanded), and a relative, `~user`, missing or unsafe root (a backslash or
+    a control character) fails with status 1; `DIGITS_PLUGIN_DIR` adds
     `--plugin-dir` first, and a folder without a Claude manifest fails with
     status 1.

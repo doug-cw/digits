@@ -14,7 +14,7 @@ Decision procedure:
 
 ## Environment identity
 
-- There are ten roots: `{{HOME}}/left_{thumb,pointer,middle,ring,pinky}` and `{{HOME}}/right_{thumb,pointer,middle,ring,pinky}`. Each root is one tmux window in the dashboard.
+- There are ten roots: `{{HOME}}/left_{thumb,pointer,middle,ring,pinky}` and `{{HOME}}/right_{thumb,pointer,middle,ring,pinky}`, unless the launcher was given another parent directory with `AI_AGENTS_ROOT` or `--root`. Each root is one tmux window in the dashboard.
 - Clones inside the roots are full, independent clones. Never convert them into worktrees, and never assume branch or dirty state is shared between roots.
 - Roots share a list of repositories, not edits. A recently added repository may be missing from some roots. Confirm this environment's exact checkout before editing.
 - Any other clone location (such as an older `{{HOME}}/code` directory) is separate: neither an alias nor a fallback. Record such legacy roots in the private tool binding, and never quietly migrate, delete, or sync them.

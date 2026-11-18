@@ -2,7 +2,8 @@
 """Start or reattach the ai-agents tmux workbench.
 
 One tmux session, ``ai-agents``, holds ten windows, one per independent
-environment directory under your home. The launcher creates missing windows,
+environment directory under the environments root: ``--root``, else
+``$AI_AGENTS_ROOT``, else your home. The launcher creates missing windows,
 refuses to touch anything it does not recognise, applies the dashboard
 configuration and attaches. It also implements the dashboard shortcuts for
 jumping to the next chat needing attention and opening a chat's newest
@@ -14,6 +15,7 @@ import argparse
 import fcntl
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -38,7 +40,7 @@ _DIRECTORIES = (
     "right_pinky",
 )
 
-# (index, directory under HOME, window name)
+# (index, directory under the environments root, window name)
 WINDOWS = tuple(
     (index, directory, directory.replace("_", " ").title())
     for index, directory in enumerate(_DIRECTORIES, start=1)
@@ -78,6 +80,9 @@ RESOURCE_CHECK = None
 # Used when fish is absent: the login shell from $SHELL, if it is an absolute
 # path to an executable file.
 LOGIN_SHELL = os.environ.get("SHELL") or None
+# Set from --root; None falls back to $AI_AGENTS_ROOT, then HOME.
+ROOT = None
+ROOT_VARIABLE = "AI_AGENTS_ROOT"
 
 
 class LauncherError(Exception):
@@ -116,6 +121,70 @@ def list_sessions():
 
 def lock_path():
     return Path(HOME) / "Library" / "Caches" / "env-sync" / "ai-agents.lock"
+
+
+def _absolute_root(value, source):
+    """``value`` as an absolute, existing directory. Only ``~`` and ``~/`` are expanded."""
+    if "\\" in value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+        raise LauncherError("{} must not contain a backslash or control characters".format(source))
+    expanded = str(HOME) + value[1:] if value == "~" or value.startswith("~/") else value
+    path = Path(expanded)
+    if not path.is_absolute():
+        raise LauncherError("{} must be an absolute path, not {!r}".format(source, value))
+    if not path.is_dir():
+        raise LauncherError("{} is not an existing directory: {}".format(source, path))
+    return path
+
+
+def given_root():
+    """The root given by --root or $AI_AGENTS_ROOT as (path, source), or (None, None)."""
+    if ROOT is not None:
+        return _absolute_root(str(ROOT), "--root"), "--root"
+    value = os.environ.get(ROOT_VARIABLE, "")
+    if value:
+        return _absolute_root(value, ROOT_VARIABLE), ROOT_VARIABLE
+    return None, None
+
+
+def _kill_hint():
+    return "kill the session first with tmux kill-session -t {} (this ends every chat in the session)".format(
+        SESSION
+    )
+
+
+def _same_directory(first, second):
+    """True when both name the same directory: samefile when both exist, else realpath."""
+    try:
+        return os.path.samefile(first, second)
+    except OSError:
+        return os.path.realpath(first) == os.path.realpath(second)
+
+
+def environments_root(exported=None, validate=True):
+    """The directory holding the ten environments.
+
+    A given root (--root, then $AI_AGENTS_ROOT) wins; otherwise the root an existing
+    session exported, then HOME. A given root that differs from the exported one is
+    refused: the session's windows already live under the exported root. The
+    exported root is checked only when ``validate`` is true (a window has to be
+    created), so a stale export never blocks a plain reattach.
+    """
+    given, source = given_root()
+    if exported:
+        if given is None:
+            if not validate:
+                return Path(exported)
+            try:
+                return _absolute_root(exported, "the session's " + ROOT_VARIABLE)
+            except LauncherError as error:
+                raise LauncherError("{}; to start it under another root, {}".format(error, _kill_hint()))
+        if not _same_directory(str(given), exported):
+            raise LauncherError(
+                "session {} uses {} {}, but {} gives {}; to change its root, {}".format(
+                    SESSION, ROOT_VARIABLE, exported, source, given, _kill_hint()
+                )
+            )
+    return given if given is not None else Path(HOME)
 
 
 def environment_shell():
@@ -166,8 +235,9 @@ def ensure_session():
             )
 
     missing = [window for window in WINDOWS if window[0] not in existing]
+    root = environments_root(None if new else session_root(), validate=bool(missing))
     for _index, directory, _name in missing:
-        path = Path(HOME) / directory
+        path = root / directory
         if path.is_symlink() or not path.is_dir():
             raise LauncherError("Missing independent environment: {}".format(path))
     if missing and not environment_shell():
@@ -176,27 +246,31 @@ def ensure_session():
         )
 
     command = _shell_command()
+    # Each new shell starts with the root; the session export covers panes opened later.
+    root_variable = "{}={}".format(ROOT_VARIABLE, root)
     remaining = missing
     first_window = None
     if new:
         _index, directory, name = missing[0]
         first_window = tmux(
-            "new-session", "-d", "-s", SESSION, "-n", name,
-            "-c", str(Path(HOME) / directory), "-P", "-F", "#{window_id}", *command
+            "new-session", "-d", "-s", SESSION, "-n", name, "-e", root_variable,
+            "-c", str(root / directory), "-P", "-F", "#{window_id}", *command
         )
         tmux("set-option", "-t", TARGET, MARKER, "1")
         remaining = missing[1:]
 
     for option, value in SESSION_OPTIONS:
         tmux("set-option", "-t", TARGET, option, value)
+    # Panes opened later in the session (and the chats in them) find their environment.
+    tmux("set-environment", "-t", "=" + SESSION, ROOT_VARIABLE, str(root))
 
     if new and tmux("display-message", "-p", "-t", first_window, "#{window_index}") != "1":
         tmux("move-window", "-s", first_window, "-t", "{}1".format(TARGET))
 
     for index, directory, name in remaining:
         tmux(
-            "new-window", "-d", "-t", "{}{}".format(TARGET, index), "-n", name,
-            "-c", str(Path(HOME) / directory), *command
+            "new-window", "-d", "-t", "{}{}".format(TARGET, index), "-n", name, "-e", root_variable,
+            "-c", str(root / directory), *command
         )
 
     for index, _directory, _name in WINDOWS:
@@ -469,15 +543,29 @@ def _check_restartable(pane_pid, command, state, owner, dead, own):
         raise Skipped("busy ({})".format(state or "no state"))
 
 
-def restart_chat(pane, shell):
-    """Exit the chat in ``pane``, reload the login shell and start a chat again."""
+def session_root():
+    """The environments root exported to the session, or None."""
+    try:
+        line = tmux("show-environment", "-t", "=" + SESSION, ROOT_VARIABLE)
+    except LauncherError:
+        return None
+    name, sep, value = line.partition("=")
+    return value if sep and name == ROOT_VARIABLE and value else None
+
+
+def restart_chat(pane, shell, root=None):
+    """Exit the chat in ``pane``, reload the login shell and start a chat again.
+
+    ``root``, when given, is passed to the new shell as ``AI_AGENTS_ROOT``.
+    """
     tmux("send-keys", "-t", pane, "-l", "/exit")
     time.sleep(KEY_PAUSE)
     tmux("send-keys", "-t", pane, "Enter")
     if _wait_for(pane, lambda c: c in SHELL_COMMANDS, EXIT_TIMEOUT) is None:
         raise LauncherError("the chat did not exit within {:g}s".format(EXIT_TIMEOUT))
     folder = tmux("display-message", "-p", "-t", pane, "#{pane_current_path}")
-    tmux("send-keys", "-t", pane, "-l", "exec /usr/bin/env -u VIRTUAL_ENV {} -l".format(shell))
+    keep = " {}={}".format(ROOT_VARIABLE, shlex.quote(root)) if root else ""
+    tmux("send-keys", "-t", pane, "-l", "exec /usr/bin/env -u VIRTUAL_ENV{} {} -l".format(keep, shell))
     tmux("send-keys", "-t", pane, "Enter")
     time.sleep(SHELL_PAUSE)
     if _wait_for(pane, lambda c: c in SHELL_COMMANDS, EXIT_TIMEOUT) is None:
@@ -503,6 +591,7 @@ def restart_chats(names):
             "A login shell is required to restart chats; install fish or set SHELL"
         )
     own = _ancestor_pids()
+    root = session_root()
     check = RESOURCE_CHECK or default_resource_check
     failures = 0
     restarted = False
@@ -534,7 +623,7 @@ def restart_chats(names):
             print("{}: skipped, {}".format(name, reason))
             continue
         try:
-            outcome = restart_chat(pane, shell)
+            outcome = restart_chat(pane, shell, root)
         except LauncherError as error:
             print("{}: failed, {}".format(name, error))
             failures += 1
@@ -557,12 +646,25 @@ def _parse(argv):
         "--restart", nargs="*", metavar="ENV",
         help="restart idle Claude Code chats (all, or the named environments, e.g. left-ring)",
     )
+    parser.add_argument(
+        "--root", metavar="DIR",
+        help="directory holding the ten environments when creating or reattaching the session "
+        "(default: $AI_AGENTS_ROOT, else the session's root, else your home)",
+    )
     parser.add_argument("--client", help=argparse.SUPPRESS)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.root is not None and (
+        args.next_attention or args.markdown is not None or args.restart is not None
+    ):
+        parser.error("--root cannot be combined with --next-attention, --markdown or --restart")
+    return args
 
 
 def main(argv=None):
+    global ROOT
     args = _parse(argv)
+    if args.root is not None:
+        ROOT = args.root
     try:
         if args.next_attention:
             focus_next_attention()

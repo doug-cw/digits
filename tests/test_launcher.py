@@ -194,6 +194,7 @@ class TmuxTestCase(unittest.TestCase):
         self.env = {
             name: value for name, value in os.environ.items()
             if not name.startswith("TMUX") and not name.startswith("VSCODE_")
+            and name != "AI_AGENTS_ROOT"
         }
         self.env["HOME"] = str(self.home)
         self.env["PATH"] = os.pathsep.join(
@@ -889,6 +890,125 @@ class LauncherEdgeTests(TmuxTestCase):
         self.launcher.LOGIN_SHELL = str(self.root / "no-such-shell")
         self.assertEqual(self.launcher.environment_shell(), "/bin/sh")
 
+    def test_105_environments_root(self):
+        agents = self.root / "agents"
+        agents.mkdir()
+        for name in install.ENVIRONMENTS:
+            (agents / name).mkdir()
+        with mock.patch.dict(os.environ, {"AI_AGENTS_ROOT": "relative/agents"}):
+            with self.assertRaisesRegex(self.launcher.LauncherError, "AI_AGENTS_ROOT must be an absolute path"):
+                self.ensure()
+        (self.home / "left_pinky").rmdir()
+        with mock.patch.dict(os.environ, {"AI_AGENTS_ROOT": str(agents)}):
+            self.ensure()
+        self.assertEqual(self.evaluate(1, "#{pane_current_path}"), str(agents / "left_pinky"))
+        self.assertEqual(self.evaluate(10, "#{pane_current_path}"), str(agents / "right_pinky"))
+
+    def test_106_root_flag_overrides_variable(self):
+        self.install_workbench()
+        agents = self.root / "agents"
+        agents.mkdir()
+        for name in install.ENVIRONMENTS:
+            (agents / name).mkdir()
+        env = dict(self.cli_env(), AI_AGENTS_ROOT=str(self.root / "nowhere"))
+        result = self.run_cli("--no-attach", "--root", "relative", env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("ai-agents: --root must be an absolute path", result.stderr)
+        result = self.run_cli("--no-attach", env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("ai-agents: AI_AGENTS_ROOT is not an existing directory: {}".format(self.root / "nowhere"),
+                      result.stderr)
+        result = self.run_cli("--no-attach", "--root", str(agents), env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.evaluate(3, "#{pane_current_path}"), str(agents / "left_middle"))
+
+    def make_agents(self, name):
+        agents = self.root / name
+        agents.mkdir()
+        for environment in install.ENVIRONMENTS:
+            (agents / environment).mkdir()
+        return agents
+
+    def shell_root(self, index):
+        marker = self.root / "root-{}.txt".format(index)
+        self.tmux("send-keys", "-t", self.window(index), "-l",
+                  "printf %s \"$AI_AGENTS_ROOT\" > {}".format(marker))
+        self.tmux("send-keys", "-t", self.window(index), "Enter")
+        self.assertTrue(poll(lambda: marker.exists() and marker.read_text() != ""))
+        return marker.read_text()
+
+    def test_107_every_shell_gets_the_root(self):
+        agents = self.make_agents("agents dir 'q' $x `b`")
+        self.launcher.ROOT = str(agents)
+        self.ensure()
+        # Window 1 is created with the session, before the session export exists.
+        self.assertEqual(self.shell_root(1), str(agents))
+        self.assertEqual(self.shell_root(10), str(agents))
+        self.assertEqual(self.tmux("show-environment", "-t", "=ai-agents", "AI_AGENTS_ROOT"),
+                         "AI_AGENTS_ROOT={}".format(agents))
+        self.assertEqual(self.launcher.session_root(), str(agents))
+        # A pane opened later by hand gets it from the session environment.
+        self.tmux("split-window", "-d", "-t", self.window(2), "/bin/sh")
+        marker = self.root / "split.txt"
+        self.tmux("send-keys", "-t", self.window(2) + ".1", "-l",
+                  "printf %s \"$AI_AGENTS_ROOT\" > {}".format(marker))
+        self.tmux("send-keys", "-t", self.window(2) + ".1", "Enter")
+        self.assertTrue(poll(lambda: marker.exists() and marker.read_text() == str(agents)))
+
+    def test_108_session_root_is_kept_or_refused(self):
+        agents = self.make_agents("agents")
+        other = self.make_agents("other")
+        self.launcher.ROOT = str(agents)
+        self.ensure()
+        # No root given: a recreated window goes back under the session's root.
+        self.launcher.ROOT = None
+        self.tmux("kill-window", "-t", self.window(4))
+        self.ensure()
+        self.assertEqual(self.evaluate(4, "#{pane_current_path}"), str(agents / "left_pointer"))
+        self.assertEqual(self.shell_root(4), str(agents))
+        # The same root given again is fine; a different one is refused, naming both.
+        self.launcher.ROOT = str(agents)
+        self.ensure()
+        for patch in ({}, {"AI_AGENTS_ROOT": str(other)}):
+            self.launcher.ROOT = str(other) if not patch else None
+            with self.subTest(source="variable" if patch else "--root"), \
+                    mock.patch.dict(os.environ, patch):
+                with self.assertRaises(self.launcher.LauncherError) as raised:
+                    self.ensure()
+                message = str(raised.exception)
+                for part in (str(agents), str(other), "kill the session first",
+                             "this ends every chat in the session"):
+                    self.assertIn(part, message)
+        self.assertEqual(self.launcher.session_root(), str(agents))
+        # The same directory spelled another way (a symlink, or another letter case on a
+        # case-insensitive volume) is the same root.
+        alias = self.root / "alias"
+        alias.symlink_to(agents)
+        self.launcher.ROOT = str(alias)
+        self.ensure()
+        upper = self.root / "AGENTS"
+        if upper.is_dir():
+            self.launcher.ROOT = str(upper)
+            self.ensure()
+
+    def test_108_stale_session_root(self):
+        agents = self.make_agents("agents")
+        self.launcher.ROOT = str(agents)
+        self.ensure()
+        self.launcher.ROOT = None
+        gone = self.root / "gone"
+        self.tmux("set-environment", "-t", "=ai-agents", "AI_AGENTS_ROOT", str(gone))
+        # Nothing to create: a plain reattach is not blocked by the stale export.
+        self.ensure()
+        # A window to create: the stale root is refused, with the kill hint.
+        self.tmux("kill-window", "-t", self.window(4))
+        with self.assertRaises(self.launcher.LauncherError) as raised:
+            self.ensure()
+        message = str(raised.exception)
+        for part in ("the session's AI_AGENTS_ROOT is not an existing directory", str(gone),
+                     "kill the session first", "this ends every chat in the session"):
+            self.assertIn(part, message)
+
     def test_75_missing_configuration(self):
         result = self.run_cli("--no-attach")
         self.assertEqual(result.returncode, 1)
@@ -1177,6 +1297,74 @@ class RestartUnitTests(unittest.TestCase):
                 mock.patch.object(launcher.os, "cpu_count", return_value=4), \
                 mock.patch.object(launcher.os, "getloadavg", return_value=(3.9, 0, 0)):
             self.assertEqual(launcher.default_resource_check(), (True, ""))
+
+    def test_107_restart_keeps_the_root(self):
+        launcher = self.launcher
+        typed = []
+        started = []
+
+        def fake_tmux(*args):
+            if args[0] == "send-keys" and args[3] == "-l":
+                typed.append(args[4])
+                if args[4].startswith(launcher.CHAT_COMMAND):
+                    started.append(True)
+                return ""
+            if args[0] == "display-message" and args[-1] == "#{pane_current_command}":
+                return "claude" if started else "zsh"
+            if args[0] == "display-message" and args[-1] == "#{pane_current_path}":
+                return "/nonexistent/left_ring"
+            return ""
+
+        for name in ("KEY_PAUSE", "SHELL_PAUSE", "CONFIRM", "POLL"):
+            setattr(launcher, name, 0)
+        with mock.patch.object(launcher, "tmux", fake_tmux):
+            launcher.restart_chat("%1", "/bin/zsh", "/srv/agents root")
+        self.assertIn("exec /usr/bin/env -u VIRTUAL_ENV AI_AGENTS_ROOT='/srv/agents root' /bin/zsh -l", typed)
+        # A root with a space, a quote, a dollar and a backtick reaches the shell unchanged.
+        awkward = "/srv/a b'c$d`e"
+        typed.clear()
+        started.clear()
+        with mock.patch.object(launcher, "tmux", fake_tmux):
+            launcher.restart_chat("%1", "/bin/zsh", awkward)
+        line = [text for text in typed if text.startswith("exec ")][0]
+        assignment = line[len("exec /usr/bin/env -u VIRTUAL_ENV "):-len(" /bin/zsh -l")]
+        echoed = subprocess.run(["/bin/sh", "-c", "printf %s " + assignment.split("=", 1)[1]],
+                                capture_output=True, text=True, check=True).stdout
+        self.assertEqual(echoed, awkward)
+        typed.clear()
+        started.clear()
+        with mock.patch.object(launcher, "tmux", fake_tmux):
+            launcher.restart_chat("%1", "/bin/zsh")
+        self.assertIn("exec /usr/bin/env -u VIRTUAL_ENV /bin/zsh -l", typed)
+
+    def test_109_root_validation(self):
+        launcher = self.launcher
+        home = Path(os.path.realpath(tempfile.mkdtemp(prefix="digits-root-")))
+        self.addCleanup(shutil.rmtree, str(home), True)
+        (home / "agents").mkdir()
+        launcher.HOME = home
+        self.assertEqual(launcher._absolute_root("~", "--root"), home)
+        self.assertEqual(launcher._absolute_root("~/agents", "--root"), home / "agents")
+        with self.assertRaisesRegex(launcher.LauncherError, "--root must be an absolute path, not '~nobody/agents'"):
+            launcher._absolute_root("~nobody/agents", "--root")
+        for unsafe in (str(home) + "\\agents", str(home) + "/a\nb", str(home) + "/a\tb", str(home) + "/a\x7fb"):
+            with self.subTest(root=unsafe):
+                with self.assertRaisesRegex(launcher.LauncherError,
+                                            "AI_AGENTS_ROOT must not contain a backslash or control characters"):
+                    launcher._absolute_root(unsafe, "AI_AGENTS_ROOT")
+
+    def test_110_root_only_with_ensure_modes(self):
+        launcher = self.launcher
+        self.assertEqual(launcher._parse(["--root", "/srv"]).root, "/srv")
+        self.assertEqual(launcher._parse(["--no-attach", "--root", "/srv"]).root, "/srv")
+        for mode in (["--restart"], ["--restart", "left-ring"], ["--next-attention"], ["--markdown", "%1"]):
+            with self.subTest(mode=mode):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    with self.assertRaises(SystemExit) as raised:
+                        launcher._parse(mode + ["--root", "/srv"])
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("--root cannot be combined with", err.getvalue())
 
     def test_104_restart_is_exclusive_with_other_modes(self):
         with contextlib.redirect_stderr(io.StringIO()):
