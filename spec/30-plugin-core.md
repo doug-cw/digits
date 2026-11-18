@@ -56,7 +56,8 @@ plugin/
     rebase-pr/SKILL.md                                  (spec 40)
     request-review/SKILL.md
     review-reactions/SKILL.md, reaction_plan.py         (spec 40)
-    self-improve/SKILL.md, checkpoint.py, report-contract.md
+    self-improve/SKILL.md, checkpoint.py, report-contract.md,
+                  session_history.py
     standup-update/SKILL.md, fetch-github-activity.sh,
                    fetch-jira-activity.sh, run-scheduled.sh
     summarize/SKILL.md
@@ -64,7 +65,8 @@ plugin/
 ```
 
 Repository-level files that exercise this package (outside `plugin/`):
-`tests/test_self_improve.py`, `tests/test_standup_helpers.py`, and the
+`tests/test_self_improve.py`, `tests/test_standup_helpers.py`,
+`tests/test_session_history.py`, and the
 catalog `.github/plugin/marketplace.json` (its single `digits` entry has
 `source` `./plugin` and the same `version` as `plugin.json`).
 
@@ -323,6 +325,7 @@ sections in this order, with the listed facts.
    | 6 | `update-shared-workflows/shared_refs.py` | edits workflow files, and only when `--write` is given | tags via `gh api`; local workflow files |
    | 7 | `inter-env/inter_env.py` | private drafts and receipts; types into tmux only during an approved `send` | tmux, ps, lsof, saved session history |
    | 8 | `self-improve/checkpoint.py` | the private checkpoint file | its own state file; the installed context |
+   | 9 | `self-improve/session_history.py` | none; prints bounded, paged JSON | Claude Code transcripts under `~/.claude/projects` |
 
    Then the Jira helper's requirements (bash, jq, curl, macOS `security`), site
    source (second argument or `DIGITS_JIRA_SITE`), optional
@@ -828,7 +831,10 @@ is the target.
    rely on the date stated inside each update, because local turn timestamps can
    belong to the following turn. When a chat reply only gave a file path, open
    that draft (and, if needed, the newest two or three dated files in the output
-   directory); such a reply still counts as an update. From each update capture
+   directory); such a reply still counts as an update. On Claude Code the same
+   lookup is `session_history.py turns --role assistant --since <date> --grep
+   '<first field label>' --grep digits/standup/ --limit 3` (section 12.6),
+   which reads local history only. From each update capture
    open themes, last reported status, promised readiness and blockers. These
    drafts show what was said, not that work happened or was submitted. When none
    exist, say so instead of inventing a baseline.
@@ -839,7 +845,9 @@ is the target.
 3. *Recent work chats (mandatory).* Find sessions from every environment, not
    only this checkout: the `sessions` table, updated within 7 days, newest first,
    at most 60 rows; repeat with `source: "local"` and a date-prefix filter if
-   expected chats are absent or summaries look stale. A missing or generic
+   expected chats are absent or summaries look stale. On Claude Code use
+   `session_history.py sessions --since <date> --limit 60`, then `turns
+   --session <id> --limit 6` (section 12.6). A missing or generic
    summary is not evidence of no work. For probable work sessions read checkpoints
    or the newest handful of turns, taking both user and assistant text, since
    course corrections, pauses and ownership calls often live only in user turns.
@@ -1557,7 +1565,12 @@ only via the helper (no hand edits, no other session's database).
 all ten environment roots, covering long-lived sessions, resumed or newly
 numbered sessions, and sessions with empty or generic summaries, using
 `session_store_sql`. Discovery comes first and is bounded; per-session reads
-follow. Cloud
+follow. On Claude Code, which has no `session_store_sql`, the same inventory
+uses `session_history.py` beside `SKILL.md` (section 12.6): `sessions` with one
+`--root` per environment root, `--since <query_since> --until
+<reviewed_through> --limit 60 --offset <n>`, then `turns --session <id>` and
+`turns --grep <term>`; it reads only local transcripts, so the cloud/local
+split applies to Copilot. Cloud
 discovery: `sessions` rows updated no earlier than `query_since` and created no
 later than `reviewed_through`, ordered, 60 per page, paginated (the first page is
 never assumed complete), long windows split into chunks of at most 7 days; also
@@ -1828,6 +1841,54 @@ of type `OSError` (including lock contention), `ValueError`, `KeyError`,
 `TypeError` or `ImportError`: stderr line prefixed `Self-improvement checkpoint:`
 and exit 1.
 
+### 12.6 Helper `session_history.py` (Claude Code chat history)
+
+Copilot skills read earlier chats with `session_store_sql`. Claude Code has no
+such tool, so `investigate`, `self-improve` and `standup-update` call this
+helper there; under Copilot they keep using `session_store_sql`. It lives in
+`self-improve/` and the other two skills reach it as
+`<absolute-skill-directory>/../self-improve/session_history.py`, since the plugin
+installs as one tree. Standard library only, Python 3.9+, read-only.
+
+**Source.** One JSONL transcript per session at
+`<projects>/<slug>/<session id>.jsonl`; `<projects>` is `--projects-dir`, else
+`$CLAUDE_CONFIG_DIR/projects`, else `~/.claude/projects`. `<slug>` is the
+directory the session started in with every non-alphanumeric character replaced
+by `-`. Files nested deeper (sub-agent transcripts) are ignored, as are
+symlinks, unparsable lines and files last modified before `--since`.
+
+**Environment membership.** A session belongs to `--root R` when its first
+recorded `cwd` equals `R` or lies below it; the slug is only a prefilter, so a
+sibling such as `R2` never matches `R`. Without `--root`, every session counts.
+
+**Turns.** A user turn is a `user` record that is not meta, a compaction summary,
+a sub-agent turn or a tool result, whose `origin.kind` is absent or `human`
+(peer and task-notification messages are excluded), with text left after
+`<system-reminder>` blocks are removed and not local-command output. An
+assistant turn is the text blocks of an `assistant` record; thinking and tool
+calls are not turns.
+
+**CLI.** `session_history.py [--projects-dir PATH] <subcommand>`; every
+subcommand takes repeatable `--root`, `--since`, `--until` (UTC ISO timestamp
+or `YYYY-MM-DD`; a bare `--until` date covers the whole day), `--limit` (1–200)
+and `--offset` (0 or more), and prints one JSON object
+`{"items": [...], "total": n, "next_offset": n or null}`.
+
+- `sessions` (default limit 60): sessions updated no earlier than `--since` and
+  created no later than `--until`, newest update first. Items carry exactly
+  `session_id`, `cwd`, `title` (custom title, else AI title, else null),
+  `created`, `updated`, `user_turns`, `assistant_turns`.
+- `turns` (default limit 20): turns in the window, newest first unless
+  `--order oldest`; filters `--session` (repeatable), `--role
+  user|assistant|both` (default both) and `--grep` (repeatable,
+  case-insensitive substring, any match). Items carry exactly `session_id`,
+  `cwd`, `timestamp`, `role`, `text` (at most `--max-chars`, 1–4000, default
+  600) and `truncated`.
+
+It never prints a whole transcript, tool output or any other record field.
+Errors (bad timestamp, unreadable file): stderr line prefixed
+`Session history:` and exit 1; out-of-range arguments exit 2 via argparse.
+
 ---
 
 ## 13. Test placement and CI hooks
@@ -1836,6 +1897,7 @@ and exit 1.
 |---|---|---|
 | `plugin/skills/inter-env/test_inter_env.py` | `python -m unittest discover -p 'test_*.py' -s plugin/skills/inter-env` | Imports `inter_env` as a module; patches its state root, home, `command`, `discover`, `inspect`, `live_session`, `recipient_snapshot`, `await_receipt`, `await_reload` and `TMUX_PANE`. Implementations MUST expose these as module-level names so they can be patched. |
 | `tests/test_self_improve.py` | repository unittest discovery | Loads `checkpoint.py` by file path; uses real `context_install` and the workbench `install.execute` to install context into a temporary home; patches `verify_context` and `os.replace`. |
+| `tests/test_session_history.py` | repository unittest discovery | Loads `session_history.py` by file path; builds invented transcripts in a temporary `--projects-dir`; never reads the real home. |
 | `tests/test_standup_helpers.py` | repository unittest discovery | Skipped when `jq` is missing. Runs the shell helpers with `bash`, a temporary `HOME`, `TZ=UTC`, and Python stub executables (`gh`, `security`, `curl`, `copilot`, `pbcopy`, `osascript`) placed in `$HOME/.local/bin`, which is first on `PATH`. |
 | `plugin/com.github.copilot/extensions/*/*.test.mjs` | `node --test plugin/com.github.copilot/extensions/*/*.test.mjs` | Pure-module tests with fake sessions and a fake clock. |
 | syntax | `bash -n` on every standup `*.sh`; `node --check` on every extension `extension.mjs` | CI (spec 50). |

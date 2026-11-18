@@ -46,8 +46,10 @@ words, find the artifact before going further.
   warehouse query history, and the version actually deployed in each
   environment. The default branch says nothing about what is deployed.
 - **Prior knowledge.** Search tickets in every status (including Done and
-  Won't Do), earlier chats via `session_store_sql`, decisions recorded in chat,
-  and current or past incidents. Never file a duplicate of something already
+  Won't Do), earlier chats (Copilot: `session_store_sql`; Claude Code:
+  `python3 "<absolute-skill-directory>/../self-improve/session_history.py" turns --grep <term>`,
+  with the placeholder replaced by this `SKILL.md`'s absolute parent directory),
+  decisions recorded in chat, and current or past incidents. Never file a duplicate of something already
   tracked.
 - **Origin.** Find the commit that introduced the behavior with pickaxe and
   line-history search (`git log -S`, `git log -L`), see which releases carry
