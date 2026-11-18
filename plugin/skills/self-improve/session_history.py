@@ -30,6 +30,7 @@ MAX_CHARS = 4000
 SLUG_RE = re.compile(r"[^A-Za-z0-9]")
 REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
 TITLE_KEYS = (("custom-title", "customTitle"), ("ai-title", "aiTitle"))
+ASK_TOOLS = ("AskUserQuestion", "ExitPlanMode")
 
 
 class Refused(Exception):
@@ -78,32 +79,90 @@ def records(path):
                 yield record
 
 
-def turn_text(record):
-    """(role, text) for a user prompt or an assistant reply; None for anything else.
-
-    User prompts exclude tool results, meta and compaction records, sub-agent
-    turns, and messages injected by peers or task notifications.
-    """
-    kind = record.get("type")
-    if kind not in ("user", "assistant") or record.get("isSidechain"):
-        return None
-    if kind == "user":
-        if record.get("isMeta") or record.get("isCompactSummary"):
-            return None
-        origin = record.get("origin")
-        if isinstance(origin, dict) and origin.get("kind") not in (None, "human"):
-            return None
-    content = (record.get("message") or {}).get("content")
-    if isinstance(content, str):
-        parts = [content]
-    elif isinstance(content, list):
-        parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-    else:
-        return None
+def clean(parts):
     text = REMINDER_RE.sub("", "\n".join(parts)).strip()
     if not text or text.startswith("<local-command-"):
         return None
-    return kind, text
+    return text
+
+
+def block_text(content):
+    if isinstance(content, str):
+        return [content]
+    if isinstance(content, list):
+        return [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+    return None
+
+
+def answer_text(record, block, tool):
+    """Only the user's own words from one answer: never the question, plan or preview."""
+    if block.get("is_error"):
+        feedback = record.get("userFeedback")
+        label = "[plan rejected]" if tool == "ExitPlanMode" else "[questions rejected]"
+        return f"{label} {feedback.strip()}" if isinstance(feedback, str) and feedback.strip() else label
+    if tool == "ExitPlanMode":
+        return "[plan approved]"
+    result = record.get("toolUseResult")
+    result = result if isinstance(result, dict) else {}
+    answers = result.get("answers") if isinstance(result.get("answers"), dict) else {}
+    notes = result.get("annotations") if isinstance(result.get("annotations"), dict) else {}
+    picked = []
+    for question, answer in answers.items():
+        if isinstance(answer, list):
+            answer = ", ".join(a for a in answer if isinstance(a, str))
+        if not isinstance(answer, str):
+            continue
+        note = (notes.get(question) or {}).get("notes") if isinstance(notes.get(question), dict) else None
+        picked.append(f"{answer} (notes: {note})" if isinstance(note, str) and note.strip() else answer)
+    return "[answered] " + "; ".join(picked) if picked else "[answered]"
+
+
+def turn_text(record, asks):
+    """(role, kind, text) for one turn of the chat; None for anything else.
+
+    `asks` maps this transcript's AskUserQuestion and ExitPlanMode call ids
+    seen so far to the tool; pass one fresh dict per file. User kinds: `prompt`
+    (typed at the input), `queued` (typed while the agent was busy) and
+    `answer` (a reply to one of those questions or plans). Other tool results, meta and compaction
+    records, sub-agent turns, and messages from peers or task notifications
+    are not turns. Assistant replies are `reply`.
+    """
+    kind = record.get("type")
+    if record.get("isSidechain"):
+        return None
+    if kind == "attachment":
+        attachment = record.get("attachment")
+        if not isinstance(attachment, dict) or attachment.get("type") != "queued_command":
+            return None
+        origin = attachment.get("origin")
+        if not isinstance(origin, dict) or origin.get("kind") != "human":
+            return None
+        text = clean(block_text(attachment.get("prompt")) or [])
+        return ("user", "queued", text) if text else None
+    if kind not in ("user", "assistant"):
+        return None
+    content = (record.get("message") or {}).get("content")
+    if kind == "assistant":
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") in ASK_TOOLS:
+                    asks[b.get("id")] = b.get("name")
+        text = clean(block_text(content) or [])
+        return ("assistant", "reply", text) if text else None
+    if record.get("isMeta") or record.get("isCompactSummary"):
+        return None
+    origin = record.get("origin")
+    if isinstance(origin, dict) and origin.get("kind") not in (None, "human"):
+        return None
+    if isinstance(content, list):
+        answers = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"
+                   and b.get("tool_use_id") in asks]
+        if answers:
+            text = clean([answer_text(record, b, asks[b["tool_use_id"]]) for b in answers])
+            return ("user", "answer", text) if text else None
+    parts = block_text(content)
+    text = clean(parts) if parts is not None else None
+    return ("user", "prompt", text) if text else None
 
 
 def transcripts(projects_dir, roots, since=None):
@@ -133,6 +192,7 @@ def summarize(path, roots):
     titles = {}
     first = last = None
     counts = {"user": 0, "assistant": 0}
+    asks = {}
     for record in records(path):
         if cwd is None and record.get("cwd"):
             cwd = record["cwd"]
@@ -150,7 +210,7 @@ def summarize(path, roots):
             if moment:
                 first = moment if first is None or moment < first else first
                 last = moment if last is None or moment > last else last
-        turn = turn_text(record)
+        turn = turn_text(record, asks)
         if turn:
             counts[turn[0]] += 1
     if cwd is None or first is None:
@@ -201,12 +261,13 @@ def cmd_turns(args):
         if args.session and path.stem not in args.session:
             continue
         cwd = None
+        asks = {}
         for record in records(path):
             if cwd is None and record.get("cwd"):
                 cwd = record["cwd"]
                 if not under(cwd, args.root):
                     break
-            turn = turn_text(record)
+            turn = turn_text(record, asks)
             if not turn or turn[0] not in roles:
                 continue
             try:
@@ -215,7 +276,7 @@ def cmd_turns(args):
                 continue
             if moment is None or (since and moment < since) or (until and moment > until):
                 continue
-            role, text = turn
+            role, kind, text = turn
             folded = text.casefold()
             if terms and not any(t in folded for t in terms):
                 continue
@@ -224,6 +285,7 @@ def cmd_turns(args):
                 "cwd": record.get("cwd") or cwd,
                 "timestamp": iso(moment),
                 "role": role,
+                "kind": kind,
                 "text": text[:args.max_chars],
                 "truncated": len(text) > args.max_chars,
             })
@@ -265,7 +327,7 @@ def build_parser():
     common(sessions, 60)
     sessions.set_defaults(handler=cmd_sessions)
 
-    turns = sub.add_parser("turns", help="bounded user prompts and assistant replies")
+    turns = sub.add_parser("turns", help="bounded user prompts, queued prompts and answers, and assistant replies")
     common(turns, 20)
     turns.add_argument("--session", action="append", default=[], help="session id; repeat for several")
     turns.add_argument("--role", choices=("user", "assistant", "both"), default="both")
