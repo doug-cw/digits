@@ -552,7 +552,7 @@ change behaviour inside `ai-agents`. Sourcing it repeatedly is idempotent.
 | `status-position` | `top` |
 | `status-interval` | `1` (re-render every second) |
 | `set-titles` | `on` |
-| `set-titles-string` | `🫲 AI Agents 🫱` |
+| `set-titles-string` | `🫲 AI Agents (Digits) 🫱` |
 | `status-style` | `bg=colour235,fg=colour252` |
 
 ### 6.2 Derived session user options (formats)
