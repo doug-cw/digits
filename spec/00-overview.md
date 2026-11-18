@@ -67,7 +67,7 @@ docs/provenance.md         # origin, clean-room rebuild record, exclusions
   the repository; derive paths from `HOME`/`Path.home()` or parameters.
 - Executables (`bin/*`, `plugin/**/*.sh`, Python helpers with a shebang) are
   committed with the executable bit.
-- Versions: plugin and marketplace entry `1.0.5`; context library `1.4.0`.
+- Versions: plugin and marketplace entry `1.0.5`; context library `1.5.0`.
 - License: MIT. `LICENSE` holds the standard MIT text; `plugin/plugin.json`
   sets `"license": "MIT"`.
 - Names: product "Digits"; plugin name `digits`; marketplace name `digits`;

@@ -30,19 +30,14 @@ message, map consumers, recheck prior review, then read CI at job level for the 
   relevant CI: the configured pre-commit hooks, pinned tool versions, and any parse or
   config checks particular to the target. Read the current files; a command you remember
   from another repository is not universal.
-- **Run the publication preflight before the first push to a public or outside
-  remote.** Where the repository ships it (Digits does), run
-  `python3 scripts/check_publication.py --range <base>..HEAD` for the commits and
-  `--text <file>` (or `-`) for PR or issue text; it checks noreply identities and
-  trailers, private terms, home paths, emails and secrets, and says so when no
-  private-terms file is configured. A clean run does not replace reading the commits
-  and the text yourself.
+- **Check what a push publishes, not only the diff.** Before the first push to a public or outside remote, read the author and committer identities and the full commit messages (`git log --format='%an <%ae> | %cn <%ce>%n%B' <base>..HEAD`) as well as the content. That metadata is published with the commits, and names or ticket keys copied from screenshots count as content. Where the repository ships it (Digits does), run `python3 scripts/check_publication.py --range <base>..HEAD` for the commits and `--text <file>` (or `-`) for PR or issue text; it checks noreply identities and trailers, private terms, home paths, emails and secrets, and says so when no private-terms file is configured. A clean run does not replace reading.
 - **Measure size** as additions plus deletions against the real base. Some repositories
   refuse automated AI review above a threshold (for instance a raw changed-line count
   that includes tests and docs). Record any such limit per repository in the private
   `tool-and-repo-bindings.md` file and confirm it against the live workflow. Oversized
   work becomes a coherent stack of dependent PRs that link to their neighbours and merge
-  from the bottom up.
+  from the bottom up. Before a merge deletes a branch that other open PRs use as their
+  base, retarget those PRs and confirm they are still open.
 - **Re-measure after any rebase, retarget, or fix**, and recheck CI and review for that
   precise head. Inherited diffs, old approvals, skipped jobs, and trigger comments are
   not fresh validation. A review job skipped because the PR was a draft is neither a
@@ -94,7 +89,10 @@ message, map consumers, recheck prior review, then read CI at job level for the 
   explicitly allowed. Threads raised by bots may be answered and resolved once handled,
   but that does not extend to a human who has replied inside such a thread.
 - Unless asked, never merge, mark a PR ready for review, close it, approve a deployment
-  gate, or use a manual trigger to sidestep an instruction not to post.
+  gate, or use a manual trigger to sidestep an instruction not to post. A repository's own
+  written norm (such as "authors may merge their own PRs once CI passes") sets timing once
+  the user approves, not authority; neither does a permission classifier or auto mode that
+  allows the command. Approval to push is not approval to merge.
 - Use the existing `request-review` skill only when someone really wants reviewers
   requested or pinged. Keep PR descriptions short and current (see
   [writing guidance](../references/writing.md)); raise stylistic nits only on request.
