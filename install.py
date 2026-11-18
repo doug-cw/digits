@@ -49,6 +49,7 @@ HOST_FILES = {
             ".claude/hooks/digits-env-dashboard.py",
             0o755,
         ),
+        ("claude/bin/digits-claude", ".local/bin/digits-claude", 0o755),
     ),
 }
 HOSTS = tuple(HOST_FILES)
@@ -458,7 +459,9 @@ def _run(args):
 CLAUDE_HOOKS_NOTE = (
     "Claude Code: this installer never edits your settings. Merge the hooks in "
     "claude/settings.json into ~/.claude/settings.json yourself, then start new "
-    "Claude Code chats (running ones keep the hooks they started with)."
+    "Claude Code chats (running ones keep the hooks they started with). Start them "
+    "with digits-claude, which names each chat after its environment and loads the "
+    "plugin from DIGITS_PLUGIN_DIR when set."
 )
 
 

@@ -488,6 +488,17 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(manifest["description"].strip())
         self.assertNotIn("\n", manifest["description"])
 
+    def test_claude_manifest_matches_plugin(self):
+        # Claude Code ignores plugin.json at the root and reads .claude-plugin/plugin.json.
+        manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
+        claude = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertEqual(list(claude), ["name", "version", "description", "license"])
+        for key in ("name", "version", "license"):
+            self.assertEqual(claude[key], manifest[key], key)
+        self.assertTrue(claude["description"].strip())
+        self.assertNotIn("\n", claude["description"])
+        self.assertNotIn("Copilot", claude["description"])
+
     def test_versions_match_marketplace(self):
         manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
         catalog = json.loads((ROOT / ".github" / "plugin" / "marketplace.json").read_text(encoding="utf-8"))

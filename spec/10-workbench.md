@@ -23,6 +23,7 @@ MUST be reproduced exactly unless the text says the wording is free.
 | `terminal/ghostty.conf` | 100644 | not installed | | Optional Ghostty bell settings |
 | `copilot/settings.json` | 100644 | not installed | | Reviewed Copilot settings example |
 | `claude/hooks/env_dashboard.py` | 100755 | `.claude/hooks/digits-env-dashboard.py` | `0755` | Claude Code dashboard hook (section 5a; installed with `--host claude`) |
+| `claude/bin/digits-claude` | 100755 | `.local/bin/digits-claude` | `0755` | Claude Code launch command (section 5a.3; installed with `--host claude`) |
 | `claude/settings.json` | 100644 | not installed | | Claude Code hook registrations for the user to merge |
 | `tests/test_claude_hook.py` | 100644 | not installed | | Claude Code hook tests |
 | `install.py` | 100644 | not installed | | Preview-first installer/remover |
@@ -649,6 +650,25 @@ dashboard recognises its panes by the host marker `@env-dashboard-host`
 (section 6.2, `@hand-status-agent`), not by name. The Copilot extension never
 sets that marker, so a Copilot pane is still recognised only by name.
 
+### 5a.3 Launch command `claude/bin/digits-claude`
+
+A POSIX `sh` script that ends in `exec` of `$DIGITS_CLAUDE` (default `claude`)
+with these arguments, in order:
+
+1. `--plugin-dir "$DIGITS_PLUGIN_DIR"` when that variable is non-empty. If the
+   folder has no `.claude-plugin/plugin.json`, print an error naming
+   `DIGITS_PLUGIN_DIR` and exit 1 without starting anything.
+2. `-n <name>` when the physical working directory is one of the ten
+   environment folders directly under the home folder (`$HOME`, resolved
+   physically) or below one. The name is the folder name
+   with `_` replaced by `-` (`left_pinky` → `left-pinky`). Elsewhere, including
+   look-alike folders such as `left_pinky_old` or an environment name deeper in
+   the tree, no name is passed.
+3. Every argument the script received, unchanged.
+
+Naming the session is what lets chats in different environments find and
+message each other with Claude Code's own session tools.
+
 ## 6. Dashboard tmux configuration (`terminal/ai-agents.conf`)
 
 Every setting in this file targets the `ai-agents` session explicitly
@@ -991,8 +1011,8 @@ lock: compute the plan, print it, execute it. Then print:
 ### 9.2 Managed set
 
 - Files: the common files `ai-agents`, `md-view`, `ai-agents.conf`, then the
-  host's: `extension.mjs` and `state.mjs` for `copilot`, the hook for
-  `claude` (section 1 modes). An install writes the common and selected host
+  host's: `extension.mjs` and `state.mjs` for `copilot`, the hook and
+  `digits-claude` for `claude` (section 1 modes). An install writes the common and selected host
   files; files owned for the other host stay in place and in the receipt, so
   switching hosts never orphans them; uninstall removes every owned file. Sources are read from the repository directory containing
   `install.py` (resolved).
@@ -1540,3 +1560,9 @@ empty, print `No file changes needed.`
     tmux session is never touched. Outside tmux or with
     invalid input it exits 0 and changes nothing; run as an executable it
     writes nothing to stderr.
+96. Launch command (section 5a.3): every environment, and a folder below one,
+    gets its `-n` name with arguments passed on in order; the home folder itself,
+    a look-alike folder, a nested environment name and a folder outside the home
+    folder get none; `DIGITS_PLUGIN_DIR` adds
+    `--plugin-dir` first, and a folder without a Claude manifest fails with
+    status 1.

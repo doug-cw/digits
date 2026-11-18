@@ -1,0 +1,6 @@
+{
+  "name": "digits",
+  "version": "1.0.0",
+  "description": "Workflows that pause for your approval: evidence-backed standup drafts, review requests and review-status reactions, PR feedback handling, draft PR sweeps, careful rebases, shared workflow version updates, investigations, coordination across environments, and proposal-first improvement of the shared context.",
+  "license": "MIT"
+}
