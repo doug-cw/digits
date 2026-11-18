@@ -1,6 +1,6 @@
 # Resume, ownership, and evidence continuity
 
-Use when resuming earlier work, handing work off, inspecting another environment, or reconciling a status that might be out of date.
+Use when resuming earlier work, handing work off, fanning work out to several environments or agents, inspecting another environment, or reconciling a status that might be out of date.
 Scope: per-session and per-workstream state only; this page sets no durable shared policy.
 Sources: the maintainer's agreements and the plugin's `inter-env` skill.
 Reviewed: 2026-11-16.
@@ -66,6 +66,28 @@ Packets and approval:
 - Report the incremental progress, the real blocker, whether it fits and who owns it, and the exact message you propose to send.
 - Before you summarize where a ticket or PR stands, what should happen next, or how far its rollout has got (and before you pick it up yourself), consult inter-env progress and recent local history to find out whether some other environment is already driving it; if one does, name that owner rather than duplicating the work.
 - When you defer to another owner, hand over the open risks explicitly (what must be checked and by when) and obtain an acknowledgement. A promise not to duplicate work does not close the risk.
+
+## Fanning out work
+
+Every environment, subagent and delegated agent shares one machine. Running several
+heavy jobs at once can exhaust memory, and on macOS a starved machine may also flood
+the screen with keychain password dialogs that block typing.
+
+1. Before dispatching work to more than one environment or agent, check that at least
+   30% of memory is free (`memory_pressure`) and that the one-minute load average
+   (`uptime`) is below the core count (`sysctl -n hw.ncpu`). Otherwise wait, or
+   dispatch less.
+2. Run one heavy job at a time across the machine: a full test suite, a build, or an
+   extra agent process. Delegates run only the tests their change touches; the
+   coordinator runs full suites one branch at a time.
+3. Never start an extra agent process (a headless or test instance of the host CLI)
+   without the coordinator's approval, and never more than one at a time. Each reads
+   its login from the system keychain. Prefer asking the user to check something in a
+   chat that is already open.
+4. Shut down any tmux server or other test service you started as soon as you finish.
+5. Repeat rules 2 to 4 in every delegated brief; the recipient cannot see this chat.
+6. When the user reports slowness or popups, stop dispatching and tell every delegate
+   to stop. A coordinator's stop overrides the task.
 
 ## Scheduling and recovery
 

@@ -1113,6 +1113,7 @@ through tmux.
    nothing; a chat is never asked to do what the sender's session was refused.
 4. Skill reload is not available remotely: the agent tells the user which
    chats should run `/reload-skills`.
+5. The pointer to the continuity page's "Fanning out work" resource gates.
 
 **Inspect first.**
 
@@ -1153,7 +1154,9 @@ through tmux.
    this chat and the other environment it relies on), PROPOSED MESSAGE (the exact text and explicit limits
    on what the recipient may do). Approval dialogs contain no Markdown tables,
    link syntax, bold or code fences; bare URLs and absolute paths are acceptable.
-8. Coordination rules: a single owner per workstream, and a single executor per
+8. Coordination rules: before work is sent to several environments, the resource
+   gates in the continuity page's "Fanning out work" section apply. A single owner
+   per workstream, and a single executor per
    shared deployment or migration target. Authority is never inferred from a
    merged PR, passing CI, a stale approval, or a next step suggested by another
    chat. An enabled schedule does not prove anything ran; deploying a CI schema is

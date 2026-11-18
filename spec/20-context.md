@@ -518,7 +518,7 @@ copy of the corpus.
 Files (exactly these 13 Markdown files plus `version.json`):
 
 ```text
-context/version.json                         {"version": "1.1.0"}
+context/version.json                         {"version": "1.2.0"}
 context/bootstrap.md
 context/README.md
 context/workflows/github-delivery.md
@@ -682,7 +682,7 @@ actions MUST match this table:
 | `domains/data-warehouse.md` | `data-warehouse-bindings.md` | SQL; dbt; warehouse; notebooks; a table or source that seems absent; a role that looks wrong; exports; delivering datasets; validating an analysis | picking a connection, source, schema, compute or deploy target, or saying something is validated |
 | `workflows/infra-lifecycle.md`, then the repository map | — | Terraform or Pulumi; buckets, IAM, KMS; switching features on or off; teardown; per-PR ephemeral deploys | deciding ownership, lifecycle, or how widely to validate |
 | `workflows/engineering-decisions.md` | — | architecture or design choices; causes not yet understood; capacity and retry questions; monitors; reviewing one's own work | settling on a design or stating a conclusion |
-| `workflows/continuity.md` (plus the `inter-env` skill for live cross-environment coordination) | — | resuming; handing off; after a reboot; another environment; a blocker that may be stale; "this is already done" | taking ownership, or doing anything based on recovered state |
+| `workflows/continuity.md` (plus the `inter-env` skill for live cross-environment coordination) | — | resuming; handing off; fanning work out to several environments or agents; after a reboot; another environment; a blocker that may be stale; "this is already done" | taking ownership, or doing anything based on recovered state |
 | `integrations/mcp.md` | — | MCP search comes back empty; a tool seems missing; authentication fails; access is refused; reconnecting | saying something is unavailable or blocked, or recommending a repair |
 | `workflows/issue-tracker.md` | `tool-and-repo-bindings.md` | opening or moving an issue; mandatory fields; a ticket asking for elevated access; this week's priorities | creating, transitioning or ranking work (confirm against live metadata) |
 | `references/writing.md` | — | standalone reports; ticket or PR descriptions; review comments; handoff notes; chat or email text; comparing costs or counts; a summary someone found confusing | producing anything a reader will see |
@@ -1228,13 +1228,14 @@ Challenging consequential changes:
 ### 15.4 `workflows/continuity.md`
 
 - H1: `Resume, ownership, and evidence continuity`.
-- Metadata — Use when: picking work back up, handing off, looking at another
-  environment, or reconciling status that may be stale. Scope: session and
+- Metadata — Use when: picking work back up, handing off, fanning work out to
+  several environments or agents, looking at another environment, or reconciling
+  status that may be stale. Scope: session and
   workstream state, not lasting shared policy. Sources: maintainer agreements and the
   plugin's `inter-env` skill. Recheck: the newest user decisions, exact session
   identity, refs, receipts and activity on the target.
 - H2s: `Reconcile before acting`; `Compact workstream packet`; `Other environments`;
-  `Scheduling and recovery`.
+  `Fanning out work`; `Scheduling and recovery`.
 - Outgoing link: `../references/writing.md`.
 
 Reconciling:
@@ -1299,6 +1300,26 @@ Other environments:
   other environment is already on it; if so, name that owner instead of duplicating.
   When deferring, hand over the open risks explicitly (what must be checked, by what
   time) and get an acknowledgement — promising not to duplicate leaves the risk open.
+
+Fanning out work (every environment, subagent and delegated agent shares one machine;
+several heavy jobs at once can exhaust memory, and on macOS a starved machine can
+flood the screen with keychain password dialogs that block typing), as a numbered
+list:
+
+1. Before dispatching to more than one environment or agent, require at least 30%
+   free memory (`memory_pressure`) and a one-minute load average (`uptime`) below the
+   core count (`sysctl -n hw.ncpu`); otherwise wait or dispatch less.
+2. One heavy job at a time across the machine (a full test suite, a build, or an
+   extra agent process). Delegates run only the tests their change touches; the
+   coordinator runs full suites one branch at a time.
+3. No extra agent process (a headless or test instance of the host CLI) without the
+   coordinator's approval, and never more than one at a time; each reads its login
+   from the system keychain. Prefer asking the user to check something in a chat
+   that is already open.
+4. Shut down any tmux server or other test service you started as soon as you finish.
+5. Repeat rules 2 to 4 in every delegated brief; the recipient cannot see this chat.
+6. When the user reports slowness or popups, stop dispatching and tell every delegate
+   to stop; a coordinator's stop overrides the task.
 
 Scheduling and recovery:
 
@@ -1995,7 +2016,7 @@ Schema: a JSON array of objects, each with exactly these keys:
 Tested invariants: each route names an existing file under `context/`, and each route
 string occurs literally in `bootstrap.md`. Prompts and expectations are prose for
 human/model evaluation (not asserted by unit tests) and must be written fresh. The
-file contains these 36 cases, in this order:
+file contains these 37 cases, in this order:
 
 | # | `id` | Prompt intent (paraphrase) | `routes` | Expected behavior (paraphrase) |
 |---|---|---|---|---|
@@ -2035,6 +2056,7 @@ file contains these 36 cases, in this order:
 | 34 | `unrelated-small-question` | (negative control) How does Python's `enumerate` work? One short example. | `[]` | Answer directly; open no context page. |
 | 35 | `unrelated-shell-one-liner` | (negative control) What does `ls -la` show? | `[]` | Answer directly; fetch no data, issue-tracker or infrastructure page. |
 | 36 | `batched-ask-overflow` | Seven pending decisions, each with three options, in a host whose question tool takes four questions. | `[]` | One numbered plain-text list with options and a recommended default per item, answered in a single reply; never several prompts for one approval. |
+| 37 | `fan-out-resource-gate` | Split work across four environments, each running the full suite and a headless chat. | `workflows/continuity.md` | Check free memory and load first; targeted tests per environment, one full suite and at most one extra agent process at a time; repeat the limits in every brief. |
 
 ## 17. Private-binding templates (`examples/private-bindings/`)
 
