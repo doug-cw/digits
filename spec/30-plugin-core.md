@@ -2,7 +2,7 @@
 
 Status: normative for the clean-room build. Read `00-overview.md` first; its
 conventions (Python 3.9 standard library, Node.js 22 ES modules, bash helpers,
-isolated tests, no hardcoded home paths, plugin version `1.0.2`, names) apply here.
+isolated tests, no hardcoded home paths, plugin version `1.0.3`, names) apply here.
 
 This file specifies:
 
@@ -112,7 +112,7 @@ A JSON object with exactly these five keys, in this order:
 |---|---|---|
 | 1 | `$schema` | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
 | 2 | `name` | `digits` |
-| 3 | `version` | `1.0.2` (must equal the marketplace entry's `version`) |
+| 3 | `version` | `1.0.3` (must equal the marketplace entry's `version`) |
 | 4 | `description` | One sentence, freshly worded, naming these capability areas: guarded Copilot CLI workflows for evidence-backed standup drafts; review requests and review-status reactions; PR feedback handling; draft PR sweeps; rebases; shared workflow version updates; investigations; coordination across environments; proposal-first improvement of the shared context. |
 | 5 | `license` | `MIT` |
 
@@ -1653,7 +1653,12 @@ current context fell short, the expected change in retrieval, risks, and the
 validation plan. Keep the always-loaded index small: promote only frequent or
 high-impact reminders, keep details on demand, reuse maintained skills; do not add
 policy for one-off errors, transient task state or unverified claims. Write a
-`proposal.json` next to it following the report contract. Print absolute
+`proposal.json` next to it following the report contract. Before presenting,
+run only the publication preflight's text check (`50-guards-and-project.md`
+section 3A) from the source checkout, `--text` over the report; nothing is
+committed yet, so `--range` waits for an approved push or PR. State its result in
+the proposal, including a skipped private-terms check, and fix findings rather
+than presenting them. Print absolute
 `file:///` links, plus a ready `md-view '<absolute path>'` command for a Markdown
 report. Use a batched ask (plain-text dialog) with approve, revise or cancel; present
 permission or policy changes separately; edit nothing while waiting. When no
@@ -1674,7 +1679,9 @@ approval policy need their own explicit approval and focused tests. The run does
 not, by default, push, open PRs, merge, post externally, query production,
 create schedules, restart or message other chats, change memory, or copy another
 chat's uncommitted work; publication approval given for some other task does not
-carry over. Follow the current branching rules without moving the active plugin
+carry over. Before any approved push or PR, the preflight runs with
+`--range <base>..HEAD` over the committed branch (and with `--text` on the PR
+body), and findings stop the publish. Follow the current branching rules without moving the active plugin
 source path. Bump the context version for corpus edits and the plugin and
 catalog versions together for skill edits. Run repository checks and focused
 regressions, adding de-identified routing cases for changed behavior. Preview and

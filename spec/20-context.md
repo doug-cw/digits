@@ -518,7 +518,7 @@ copy of the corpus.
 Files (exactly these 13 Markdown files plus `version.json`):
 
 ```text
-context/version.json                         {"version": "1.2.0"}
+context/version.json                         {"version": "1.3.0"}
 context/bootstrap.md
 context/README.md
 context/workflows/github-delivery.md
@@ -848,6 +848,12 @@ Before publishing or advising a merge:
   the relevant CI (pre-commit hooks as configured, pinned tool versions, parse or
   config checks specific to the target). Check current files; remembered commands are
   not universal.
+- Before the first push to a public or outside remote, where the repository ships it
+  (Digits does), run `python3 scripts/check_publication.py --range <base>..HEAD` for
+  the commits and `--text <file>` (or `-`) for PR or issue text; it checks noreply
+  identities and trailers, private terms, home paths, emails and secrets, and says so
+  when no private-terms file is configured. A clean run does not replace reading the
+  commits and the text.
 - Size = additions + deletions against the real base. Certain repositories refuse
   automated AI review above a limit (for example a raw count of changed lines that
   includes tests and docs). Such a limit is noted per repository in the

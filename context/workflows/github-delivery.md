@@ -30,6 +30,13 @@ message, map consumers, recheck prior review, then read CI at job level for the 
   relevant CI: the configured pre-commit hooks, pinned tool versions, and any parse or
   config checks particular to the target. Read the current files; a command you remember
   from another repository is not universal.
+- **Run the publication preflight before the first push to a public or outside
+  remote.** Where the repository ships it (Digits does), run
+  `python3 scripts/check_publication.py --range <base>..HEAD` for the commits and
+  `--text <file>` (or `-`) for PR or issue text; it checks noreply identities and
+  trailers, private terms, home paths, emails and secrets, and says so when no
+  private-terms file is configured. A clean run does not replace reading the commits
+  and the text yourself.
 - **Measure size** as additions plus deletions against the real base. Some repositories
   refuse automated AI review above a threshold (for instance a raw changed-line count
   that includes tests and docs). Record any such limit per repository in the private

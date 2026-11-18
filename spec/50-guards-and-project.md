@@ -1,7 +1,8 @@
 # 50 — Guards, CI, integration examples and project documents
 
 Scope of this file: the two repository guards (`scripts/check_repository.py`,
-`scripts/check_secrets.py`) and their tests, the CI workflow, the plugin
+`scripts/check_secrets.py`), the publication preflight
+(`scripts/check_publication.py`) and their tests, the CI workflow, the plugin
 marketplace manifest, `requirements-dev.txt`, `.gitignore`, the MCP integration
 examples under `mcp/`, and the project documentation set (`README.md`,
 `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `PROVENANCE.md`,
@@ -297,6 +298,100 @@ Recommended full form:
 
 ---
 
+## 3A. `scripts/check_publication.py` — publication preflight
+
+### 3A.1 Purpose
+
+Contributors often work in private environments and publish to a public
+repository. The two guards check a snapshot; the preflight checks what a push
+or a pull request would actually publish: commit identities, full messages,
+changed paths and added lines across a revision range, and PR or issue text.
+It is run by hand (and by the self-improve skill) before publishing; CI does
+not run it.
+
+### 3A.2 Command line (MUST)
+
+- `python scripts/check_publication.py [--range <rev-range>]... [--text <file|->]...
+  [--repo <dir>]`. At least one of `--range` and `--text` is required (usage
+  error otherwise). Both may repeat: every range is inspected (a commit selected
+  by several ranges once) and every text is scanned. `-` reads standard input
+  as bytes; input that is not UTF-8, like a text file that is not, is an error
+  (exit 1), never a crash. `--repo`
+  defaults to the module's `ROOT`; all Git commands run there.
+- Same module contract as section 1.2: module-level `ROOT`, `main(argv=None)`
+  returning 0 (clean) or 1 (findings or errors), python3 shebang with the
+  executable bit, importable as `scripts.check_publication` and runnable
+  directly. It reuses the repository guard's terms resolution and loading
+  (section 2.7, including its configuration errors and exit 1), its home-path
+  pattern (section 2.5 item 4), and the secret guard's scanner name.
+- No index check: the range is read from commit objects, not the working tree.
+
+### 3A.3 Checks (MUST)
+
+- **Commits.** `git rev-list --reverse <range>`; a range beginning with `-` is
+  rejected, and a range that selects no commits is an error (exit 1) saying
+  so. Each commit's diff is taken against its first parent (root commits
+  against the empty tree) with renames, colour, external diff and textconv off,
+  zero context and explicit `--src-prefix=a/ --dst-prefix=b/`, so user
+  configuration such as `diff.noprefix` cannot hide added lines; metadata is
+  read with `--no-show-signature`. A `+++ ` line is a file header only between
+  `diff --git` and the file's first `@@` hunk; afterwards it is an added line.
+  Per-file added-line counts from `--numstat` MUST equal the parsed counts,
+  otherwise the run fails (no passing result claimed). Deleted lines are not
+  inspected; deleted and renamed paths are.
+- **Binary changes.** A changed path that `--numstat` reports as binary is a
+  finding, `binary file not inspected`, matching the repository guard's
+  refusal of binary artifacts.
+- **Identities.** Author and committer emails MUST be GitHub noreply addresses
+  (`<anything>@users.noreply.github.com` or `noreply@github.com`, case
+  ignored). Author and committer names are scanned like content lines, and
+  each identity email that is not a GitHub noreply address is scanned for
+  private terms. A GitHub noreply address is not: its login is the public
+  account the commits are pushed as.
+- **Trailers.** A message line of the form `<Word>-by: ...` (for example
+  `Co-authored-by`, `Signed-off-by`, case ignored) whose email addresses are
+  not all noreply addresses is a finding. Trailer noreply addresses are the
+  GitHub ones plus `noreply@anthropic.com`.
+- **Content.** Every line of the full message, every changed path, every added
+  line and every line of each `--text` input is checked for:
+  - private terms: case-folded substring matching, as in section 2.8 (so a
+    term also matches inside `TermWidgets` or `termcorp.example.net`);
+  - the home-path pattern;
+  - email addresses other than noreply addresses and reserved example names:
+    `example.com`, `example.net`, `example.org` and their subdomains, and the
+    top-level names `.example`, `.invalid`, `.localhost`, `.test`.
+- **Secrets.** Added lines, messages and texts are written, one block per
+  file, to a temporary directory scanned by `detect-secrets scan --no-verify
+  --all-files`; reported line numbers are mapped back to the original lines.
+  A block keeps its source suffix only when detect-secrets selects keyword
+  rules by it (`.c`, `.cf`, `.cfg`, `.cls`, `.cnf`, `.conf`, `.cpp`, `.cs`,
+  `.eyaml`, `.go`, `.ini`, `.java`, `.js`, `.m`, `.properties`, `.py`, `.pyi`,
+  `.swift`, `.tf`, `.toml`, `.yaml`, `.yml`); every other block is named
+  `.txt`, because the scanner skips suffixes such as `.css`, `.svg` or
+  `.lock`. The scanner is required, as in section 3.1: if it is missing the
+  run fails with a message naming `requirements-dev.txt`; a scanner that fails
+  or returns unreadable output fails the run with a message that no passing
+  result is claimed.
+
+### 3A.4 Output (MUST)
+
+- Findings go to stderr, one per line, as `<location>:<line>: <kind>` or
+  `commit <12-char sha>: <kind>`, followed by a count line; nothing goes to
+  stdout on failure. Locations are `commit <sha> message`, `commit <sha>
+  <path>`, the `--text` file name, or `stdin`.
+- No finding contains the matched term, address, path segment or secret. A
+  changed path that itself has a finding is referred to as `changed path <N>`
+  (its 1-based position in that commit's changed paths), including in the
+  locations of its added lines.
+- With no terms file, a `NOTE:` line on stderr says the private-term check is
+  skipped and the other checks continue.
+- Success prints one stdout line naming the commit and text counts, the
+  private-term outcome (`used K terms` or `skipped (no terms file)`) and the
+  number of non-empty blocks the secret scan covered.
+- Git failures are errors (exit 1) that say no passing result is claimed.
+
+---
+
 ## 4. CI workflow — `.github/workflows/checks.yml`
 
 | Field | Value |
@@ -352,7 +447,7 @@ Valid JSON object with exactly these keys:
 | `plugins` | array with exactly one object |
 | `plugins[0].name` | `"digits"` |
 | `plugins[0].description` | one sentence, written fresh, saying the plugin provides approval-guarded Copilot CLI workflows covering: PR review handling, rebases, investigations, standup drafting, coordination across several environments, and context improvement that proposes before it changes anything |
-| `plugins[0].version` | `"1.0.2"` — MUST equal `version` in the plugin manifest (`30-plugin-core.md`); a test there enforces it |
+| `plugins[0].version` | `"1.0.3"` — MUST equal `version` in the plugin manifest (`30-plugin-core.md`); a test there enforces it |
 | `plugins[0].source` | `"./plugin"` |
 
 Install commands that depend on this file: `copilot plugin marketplace add
@@ -722,6 +817,11 @@ Bulleted, bold leads:
 - Closing prose: index and working tree must match for either guard to run;
   untracked files that are not ignored are covered too; every finding gets a
   real review, and blanket exemptions are not the answer.
+- Publication preflight: before pushing to a public remote or posting PR text,
+  run `python scripts/check_publication.py --range <base>..HEAD` and
+  `--text <file>` (or `-`) on the PR body; one sentence on what it checks
+  (section 3A), that it needs the pinned scanner, and that a missing terms
+  file is announced, not silent.
 
 ### 8.10 `## Contributing and security`
 - Links: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`.
@@ -1020,7 +1120,8 @@ sentence:
 - A text tree with one-line comments covering: README (quick start per
   component, safety model); the four policy documents; `bin/`; `terminal/`;
   `copilot/`; `context/`; `examples/private-bindings`; `plugin/` (Agent
-  Plugins 1.0 package); `mcp/`; `scripts/` (guards); `tests/`; `docs/`; the
+  Plugins 1.0 package); `mcp/`; `scripts/` (guards and publication
+  preflight); `tests/`; `docs/`; the
   two installers; `.github/` (CI and the `digits` marketplace manifest); plus
   `spec/` and `CLEAN_ROOM.md`.
 - **Kept, generalized, removed** — framed as the difference from the private
@@ -1128,8 +1229,8 @@ Bullets, each a mistake to avoid:
 - Link the release checklist and summarize it in four bullets: license plus
   employer sign-off; attribution and consent for borrowed material; publication
   from a fresh history and never from an internal branch's history; all guards
-  run with a personal private-terms list, with executable extensions and hooks
-  reviewed as code.
+  and the publication preflight run with a personal private-terms list, with
+  executable extensions and hooks reviewed as code.
 
 ## 14. `docs/open-source-release-checklist.md`
 
@@ -1154,7 +1255,8 @@ Required sections, in order:
    order: virtual-environment creation and activation; installation of
    `requirements-dev.txt`; the repository guard with `DIGITS_PRIVATE_TERMS`
    pointing at a placeholder path (`/path/to/private-terms.txt`); the secret
-   guard; both unittest discoveries (CI steps 8–9); `bash -n` over the
+   guard; the publication preflight with the same `DIGITS_PRIVATE_TERMS` over
+   `--range HEAD` (every commit to be published); both unittest discoveries (CI steps 8–9); `bash -n` over the
    standup-update shell helpers; a single `node --test` covering both the
    dashboard and plugin extension test globs. Then prose: a term list can miss
    things, so also search by hand for internal host names, organization names,
@@ -1324,3 +1426,22 @@ Fixture for 6–9: a fresh Git repository (nothing staged) containing untracked
 37. **Documentation links.** Every relative link in the documents of sections
     8–14 resolves to an existing file, and the anchors `#make-it-yours` and
     `#verification` exist in `README.md`.
+38. **Publication preflight** (`tests/test_check_publication.py`, temporary
+    repositories with isolated `HOME` and `GIT_CONFIG_GLOBAL`, a fake scanner
+    on a patched scanner path, invented fixtures). A clean range with a
+    `noreply@anthropic.com` co-author trailer passes; a non-noreply author or
+    committer email and a non-noreply trailer email fail without echoing the
+    address; private terms in messages, added lines, paths and identity
+    emails that are not GitHub noreply addresses are found as substrings
+    without echoing the term, while a noreply login containing a term passes, and a sensitive
+    path is reported by position; home paths and outside emails in added lines
+    are found while example-domain emails and removed lines are not; an added
+    line starting with `++ ` is content, not a header; `diff.noprefix`,
+    `diff.mnemonicPrefix` and `log.showSignature` do not hide anything; binary
+    changes are findings; root and merge commits are inspected; an empty range
+    fails and repeated ranges are all inspected; `--text` reads files and
+    stdin, and non-UTF-8 stdin fails cleanly; a missing default terms file is
+    announced and the other checks still run; an explicit missing one fails;
+    secret findings map to the original line without the value; blocks from
+    suffixes the scanner would skip are scanned as `.txt` while keyword
+    suffixes are kept; a missing or failing scanner is not success.

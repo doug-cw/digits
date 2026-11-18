@@ -237,7 +237,7 @@ context/                 bootstrap, topic pages and version
 examples/private-bindings/  templates for local, non-secret bindings
 plugin/                  Agent Plugins 1.0 package: skills and extensions
 mcp/                     integration recipes and placeholder configuration
-scripts/                 repository and secret guards
+scripts/                 repository and secret guards, publication preflight
 tests/                   Python tests and routing fixtures
 docs/                    this guide, provenance and the release checklist
 install.py               dashboard installer
@@ -338,5 +338,6 @@ In short:
 - choose a license and get your employer's sign-off;
 - obtain attribution and consent for any borrowed material;
 - publish from a fresh history, never from the history of an internal branch;
-- run every guard with your own private-terms list, and review executable
-  extensions and hooks as code.
+- run every guard and the publication preflight
+  (`scripts/check_publication.py`) with your own private-terms list, and
+  review executable extensions and hooks as code.
