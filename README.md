@@ -335,7 +335,7 @@ plugin/              the digits Copilot CLI plugin: skills and lifecycle extensi
 context/             bootstrap, topic pages and version of the context library
 examples/            private-binding templates
 mcp/                 MCP integration recipes and a placeholder configuration
-scripts/             repository and secret guards
+scripts/             repository and secret guards, publication preflight
 tests/               Python tests for installers, guards, context and helpers
 docs/                build-your-own guide, provenance and release checklist
 spec/                functional specification used for the clean-room build
@@ -382,6 +382,22 @@ python scripts/check_secrets.py
 Neither guard runs unless the index matches the working tree. Untracked files
 that are not ignored are checked too. Review every finding properly; blanket
 exemptions are not the answer.
+
+Before you push to a public remote or post a pull request, check what you are
+about to publish:
+
+```bash
+python scripts/check_publication.py --range origin/main..HEAD
+python scripts/check_publication.py --text pr-body.md    # or --text - for stdin
+```
+
+The publication preflight requires GitHub noreply author and committer emails
+and noreply `Co-authored-by`-style trailers, and scans names, full commit
+messages, changed paths, added lines and PR text for private terms, home
+paths, email addresses outside the example domains and, with the pinned
+detect-secrets, secrets. Binary changes and a range that selects no commits
+are failures. Like the guards, it reports where, never what. Without a
+private-terms file it says so and runs the other checks.
 
 ## Contributing and security
 

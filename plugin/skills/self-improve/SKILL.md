@@ -111,7 +111,12 @@ reminders, keep details on demand, reuse maintained skills, and add no policy fo
 one-off errors, transient task state or unverified claims.
 
 Write `proposal.json` next to it following `report-contract.md` in this
-directory. Print absolute `file:///` links and, for Markdown, a ready
+directory. Before presenting, run the publication preflight's text check from
+the source checkout over the proposed wording only:
+`python3 <source>/scripts/check_publication.py --text <report>`. Nothing is
+committed yet, so `--range` waits for an approved push or PR. State its result
+in the proposal, including a skipped private-terms check, and fix findings
+rather than presenting them. Print absolute `file:///` links and, for Markdown, a ready
 `md-view '<absolute path>'` command. Ask through a batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) in plain text, with
 approve, revise or cancel; present permission or policy changes separately; edit
 nothing while waiting. When no change is justified, propose "no changes" and ask
@@ -135,8 +140,10 @@ their own explicit approval and focused tests.
 No default pushes: unless separately approved for this run, do not push, open
 PRs, merge, post externally, query production, create schedules, restart or
 message other chats, change memory, or copy another chat's uncommitted work.
-Publication approval given for another task does not carry over. Follow the
-current branching rules without moving the active plugin source path.
+Publication approval given for another task does not carry over. Before any
+approved push or PR, run the preflight with `--range <base>..HEAD` over the
+committed branch (and `--text` on the PR body) and stop on findings. Follow the current branching rules without
+moving the active plugin source path.
 
 Bump the context version for corpus edits, and the plugin and catalog versions
 together for skill edits. Run repository checks and focused regressions, adding

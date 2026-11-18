@@ -23,6 +23,7 @@ source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 DIGITS_PRIVATE_TERMS=/path/to/private-terms.txt python scripts/check_repository.py
 python scripts/check_secrets.py
+DIGITS_PRIVATE_TERMS=/path/to/private-terms.txt python scripts/check_publication.py --range HEAD
 python -m unittest discover -s tests
 python -m unittest discover -s plugin/skills/inter-env -p 'test_*.py'
 for helper in plugin/skills/standup-update/*.sh; do bash -n "$helper"; done
