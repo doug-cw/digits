@@ -2,7 +2,7 @@
 
 Status: normative for the clean-room build. Read `00-overview.md` first; its
 conventions (Python 3.9 standard library, Node.js 22 ES modules, bash helpers,
-isolated tests, no hardcoded home paths, plugin version `1.0.1`, names) apply here.
+isolated tests, no hardcoded home paths, plugin version `1.0.2`, names) apply here.
 
 This file specifies:
 
@@ -61,18 +61,19 @@ plugin/
     standup-update/SKILL.md, fetch-github-activity.sh,
                    fetch-jira-activity.sh, run-scheduled.sh
     summarize/SKILL.md
+    token-usage/SKILL.md, token_usage.py, rates.json
     update-shared-workflows/SKILL.md, shared_refs.py    (spec 40)
 ```
 
 Repository-level files that exercise this package (outside `plugin/`):
 `tests/test_self_improve.py`, `tests/test_standup_helpers.py`,
-`tests/test_session_history.py`, and the
+`tests/test_session_history.py`, `tests/test_token_usage.py`, and the
 catalog `.github/plugin/marketplace.json` (its single `digits` entry has
 `source` `./plugin` and the same `version` as `plugin.json`).
 
 ### 1.2 Packaging rules (MUST)
 
-1. Exactly thirteen skill directories exist under `plugin/skills/`, each holding
+1. Exactly fourteen skill directories exist under `plugin/skills/`, each holding
    one `SKILL.md`. The directory name equals the skill's `name` frontmatter value.
    Names are bare (no `digits:` or `digits-` prefix); the CLI adds the `digits:`
    command namespace from the plugin name, so users type `/digits:<name>`.
@@ -111,7 +112,7 @@ A JSON object with exactly these five keys, in this order:
 |---|---|---|
 | 1 | `$schema` | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
 | 2 | `name` | `digits` |
-| 3 | `version` | `1.0.1` (must equal the marketplace entry's `version`) |
+| 3 | `version` | `1.0.2` (must equal the marketplace entry's `version`) |
 | 4 | `description` | One sentence, freshly worded, naming these capability areas: guarded Copilot CLI workflows for evidence-backed standup drafts; review requests and review-status reactions; PR feedback handling; draft PR sweeps; rebases; shared workflow version updates; investigations; coordination across environments; proposal-first improvement of the shared context. |
 | 5 | `license` | `MIT` |
 
@@ -146,7 +147,7 @@ settings.
 ### 1.4 Skill frontmatter conventions (MUST)
 
 Every `SKILL.md` begins with a YAML frontmatter block delimited by `---` lines at
-the very start of the file. Rules common to all thirteen:
+the very start of the file. Rules common to all fourteen:
 
 - `name:` is the first key and equals the directory name.
 - `description:` is a single non-empty line. It states what the skill does and
@@ -163,7 +164,7 @@ After the frontmatter, each body starts with a level-1 heading, then a
 Size: the self-improve `SKILL.md` MUST be at most 190 lines (tested). Spec 40
 applies the same limit to its seven skills.
 
-### 1.5 The thirteen skills
+### 1.5 The fourteen skills
 
 | # | Directory / `name` | Purpose (one line, for README and routing) | Spec |
 |---|---|---|---|
@@ -180,6 +181,7 @@ applies the same limit to its seven skills.
 | 11 | `self-improve` | Incremental review of recent work chats, proposal-first context improvements, private success checkpoint | 30 |
 | 12 | `done` | User-only: recap the chat, mark it `[DONE]`, open a fresh session | 30 |
 | 13 | `summarize` | Read-only four-part status recap of the current chat (aims, what got done, open decisions, upcoming actions), also stored as a file in the session workspace | 30 |
+| 14 | `token-usage` | Read-only token usage and estimated list-price cost per task, project, branch, environment, model or day, from local Claude Code transcripts | 30 |
 
 ---
 
@@ -243,7 +245,7 @@ sections in this order, with the listed facts.
 
 1. **Title and introduction.** States that this is the Copilot-facing part of
    Digits in Agent Plugins 1.0 format and that it ships complete guarded
-   workflows. A table with one row per skill (all thirteen, in the order of
+   workflows. A table with one row per skill (all fourteen, in the order of
    section 1.5) giving the command `/digits:<name>` and a one-line summary of
    bundled behavior. A short note that it is a personal workflow package, not
    organization policy, and that no organization defaults are built in.
@@ -252,7 +254,7 @@ sections in this order, with the listed facts.
    `copilot plugin marketplace add <path-or-repo>`; second
    `copilot plugin install digits@digits`; third `copilot plugin list --json`;
    fourth `copilot skill list --json`. Expected result: the plugin list shows `digits` once,
-   enabled, and the skill list shows each of the thirteen names (listed) exactly
+   enabled, and the skill list shows each of the fourteen names (listed) exactly
    once with source `plugin`. Explains that the plugin supplies the `digits:` namespace, is
    installed once at user scope (not once per environment), and leaves built-in
    and third-party skills untouched. Mentions that pointing `COPILOT_HOME` at a
@@ -1928,6 +1930,58 @@ It never prints a whole transcript, tool output or any other record field.
 Errors (bad timestamp, unreadable file): stderr line prefixed
 `Session history:` and exit 1; out-of-range arguments exit 2 via argparse.
 
+### 12.7 Skill `token-usage` and helper `token_usage.py`
+
+**Frontmatter.** `name: token-usage`, a one-line `description` naming the
+trigger phrases (cost of a task, usage this week, spend per project, cost by
+model), `user-invocable: true`. The body starts with a level-1 heading and a
+`Usage: /digits:token-usage ...` line, invokes the helper as
+`python3 "<absolute-skill-directory>/token_usage.py"`, defaults to the last
+seven days, and tells the agent to state that costs are list-price estimates
+and that only local Claude Code transcripts are counted. It is read-only.
+
+**Source.** The transcripts of section 12.6, plus sub-agent transcripts at
+`<projects>/<slug>/<session id>/subagents/*.jsonl`, which count toward their
+parent session. It loads `../self-improve/session_history.py` by file path and
+reuses its record reader, slug, time parsing, root membership and title rules.
+
+**Requests.** Every `assistant` record whose `message.usage` has a positive
+count is one request; records repeating the same session, `message.id` and
+`requestId` (one per content block) collapse to one. The window applies to
+each record's timestamp. Token categories: `input_tokens`, `output_tokens`,
+`cache_read_input_tokens`, and cache writes split by
+`cache_creation.ephemeral_5m_input_tokens` / `ephemeral_1h_input_tokens`
+(all 5-minute when the split does not add up); plus
+`server_tool_use.web_search_requests`.
+
+**Prices.** `rates.json` (bundled; `--rates` overrides) holds `source`,
+`retrieved`, `web_search_per_request` and USD-per-million rates per bare model
+id (`input`, `cache_write_5m`, `cache_write_1h`, `cache_read`, `output`) with
+optional `fast` (input/output; cache rates scale with input), `tiers`
+(`prompt_tokens_over` threshold on input plus cache tokens of one request) and
+`geo_multipliers` keyed by `usage.inference_geo`. Model ids lose any provider
+prefix before `claude-`, a trailing `[...]` tag, an `@` version and a
+`-YYYYMMDD` suffix. A model without rates (or `fast` without fast rates) is
+counted but not priced and is listed in `unpriced_models`.
+
+**Grouping.** `--by` (repeatable): `task` (session id, with `title`),
+`project`, `branch` (`<cwd folder name>@<gitBranch>`), `env` (first `cwd` of
+the main transcript), `model`, `day` (UTC). `project` comes from a JSON rules
+file, `--projects`, else `~/.config/digits/context/token-projects.json` when
+present: `{"projects": [{"name", "cwd": [prefix], "branch": [glob], "title":
+[case-insensitive glob]}]}`; the first rule with any match wins, otherwise
+`unassigned`. `--root` and `--session` filter as in section 12.6.
+
+**CLI and output.** `token_usage.py [--projects-dir PATH] report` with the
+options above, `--format json|table` (default json), `--limit` (1–200, default
+50) and `--offset`. JSON: `by`, `since`, `until`, `rates` (`source`,
+`retrieved`, `currency`), `items`, `total`, `next_offset`, `summary` and
+`unpriced_models`; each item and the summary carry `sessions`, `requests`,
+the five token categories, `web_searches`, `cost_usd` (4 decimals) and
+`unpriced_requests`. Items sort by cost, then output tokens, descending. The
+table is Markdown with a total row and a note naming the rates source. Errors:
+stderr line prefixed `Token usage:` and exit 1.
+
 ---
 
 ## 13. Test placement and CI hooks
@@ -1937,6 +1991,7 @@ Errors (bad timestamp, unreadable file): stderr line prefixed
 | `plugin/skills/inter-env/test_inter_env.py` | `python -m unittest discover -p 'test_*.py' -s plugin/skills/inter-env` | Imports `inter_env` as a module; patches its state root, home, `command`, `discover`, `inspect`, `live_session`, `recipient_snapshot`, `await_receipt`, `await_reload` and `TMUX_PANE`. Implementations MUST expose these as module-level names so they can be patched. |
 | `tests/test_self_improve.py` | repository unittest discovery | Loads `checkpoint.py` by file path; uses real `context_install` and the workbench `install.execute` to install context into a temporary home; patches `verify_context` and `os.replace`. |
 | `tests/test_session_history.py` | repository unittest discovery | Loads `session_history.py` by file path; builds invented transcripts in a temporary `--projects-dir`; never reads the real home. |
+| `tests/test_token_usage.py` | repository unittest discovery | Loads `token_usage.py` by file path; invented transcripts, rates and project rules in temporary files; always passes `--projects`, so it never reads the real home. |
 | `tests/test_standup_helpers.py` | repository unittest discovery | Skipped when `jq` is missing. Runs the shell helpers with `bash`, a temporary `HOME`, `TZ=UTC`, and Python stub executables (`gh`, `security`, `curl`, `copilot`, `pbcopy`, `osascript`) placed in `$HOME/.local/bin`, which is first on `PATH`. |
 | `plugin/com.github.copilot/extensions/*/*.test.mjs` | `node --test plugin/com.github.copilot/extensions/*/*.test.mjs` | Pure-module tests with fake sessions and a fake clock. |
 | syntax | `bash -n` on every standup `*.sh`; `node --check` on every extension `extension.mjs` | CI (spec 50). |
@@ -1950,17 +2005,17 @@ subprocesses or stubs, and no network, real tmux server or real home.
 
 ### 14.A Package
 
-1. **Thirteen skills registered.** Given a temporary `COPILOT_HOME` and the
+1. **Fourteen skills registered.** Given a temporary `COPILOT_HOME` and the
    repository as a local marketplace, when the user adds the marketplace
    (`copilot plugin marketplace add <repo>`), installs (`copilot plugin install
    digits@digits`), and lists plugins (`copilot plugin list --json`) and skills
    (`copilot skill list --json`), then exactly one
-   enabled plugin `digits` is listed and exactly thirteen skills with source
+   enabled plugin `digits` is listed and exactly fourteen skills with source
    `plugin` from it are listed, one per name of section 1.5, each invocable as
    `/digits:<name>` (manual integration check requiring the Copilot CLI).
 2. Given `plugin/skills`, then every `*/SKILL.md` starts with a frontmatter block
    whose `name` equals its directory and whose `description` is one non-empty
-   line; exactly thirteen such directories exist.
+   line; exactly fourteen such directories exist.
 3. Given `plugin.json`, then it has exactly the keys `$schema`, `name`,
    `version`, `description`, `license` with the values of section 1.3, and `version` equals
    the `digits` entry's version in `.github/plugin/marketplace.json`.

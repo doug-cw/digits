@@ -15,7 +15,7 @@ parallel on macOS. It has four independently adoptable components:
 |---|---|---|
 | Workbench | `10-workbench.md` | Ten independent environment directories shown as windows of one tmux session, a Copilot CLI extension that publishes per-chat activity state to a live tmux dashboard, a Markdown viewer command, optional terminal shortcut fragments, and a preview-first installer with an ownership receipt |
 | Context library | `20-context.md` | A small always-loaded instruction file that routes agents to on-demand topic pages, installed by a preview-first installer that renders paths, writes immutable content-addressed releases, supports hash-bound adoption of an existing file, and rolls back |
-| Plugin | `30-plugin-core.md`, `40-plugin-workflows.md` | A Copilot CLI plugin (Agent Plugins 1.0 format) with thirteen skills, their standard-library helpers, and two lifecycle extensions |
+| Plugin | `30-plugin-core.md`, `40-plugin-workflows.md` | A Copilot CLI plugin (Agent Plugins 1.0 format) with fourteen skills, their standard-library helpers, and two lifecycle extensions |
 | Guards and project files | `50-guards-and-project.md` | Repository source/secret/private-term checks, CI, integration (MCP) examples, and the project documentation set |
 
 ## Repository layout (MUST)
@@ -67,7 +67,7 @@ docs/provenance.md         # origin, clean-room rebuild record, exclusions
   the repository; derive paths from `HOME`/`Path.home()` or parameters.
 - Executables (`bin/*`, `plugin/**/*.sh`, Python helpers with a shebang) are
   committed with the executable bit.
-- Versions: plugin and marketplace entry `1.0.1`; context library `1.2.0`.
+- Versions: plugin and marketplace entry `1.0.2`; context library `1.2.0`.
 - License: MIT. `LICENSE` holds the standard MIT text; `plugin/plugin.json`
   sets `"license": "MIT"`.
 - Names: product "Digits"; plugin name `digits`; marketplace name `digits`;

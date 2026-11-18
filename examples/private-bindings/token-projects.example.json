@@ -1,0 +1,14 @@
+{
+ "_about": "Copy to ~/.config/digits/context/token-projects.json. The first project with a matching cwd prefix, git branch glob or chat title glob wins; everything else is 'unassigned'. Fictional example-org values; replace them with your own.",
+ "projects": [
+  {
+   "name": "billing-migration",
+   "cwd": ["~/Code/example-org/billing"],
+   "branch": ["feat/billing-*", "PROJ-12*"]
+  },
+  {
+   "name": "customer-onboarding",
+   "title": ["*onboarding*"]
+  }
+ ]
+}

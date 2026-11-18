@@ -38,3 +38,4 @@ sections you do not need rather than leaving realistic-looking placeholders behi
 |---|---|
 | `tool-and-repo-bindings.md` | The bootstrap and the writing, workspace and terminal, repository map, issue tracker and GitHub delivery pages |
 | `data-warehouse-bindings.md` | The bootstrap and the data warehouse page |
+| `token-projects.json` | The `token-usage` skill, to group cost by project (copy `token-projects.example.json`) |

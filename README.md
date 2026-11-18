@@ -343,10 +343,10 @@ install.py           dashboard installer
 context_install.py   context library installer
 ```
 
-The plugin ships thirteen skills: `assess-and-address`, `challenge-pass`,
+The plugin ships fourteen skills: `assess-and-address`, `challenge-pass`,
 `done`, `draft-pr-sweep`, `inter-env`, `investigate`, `rebase-pr`,
 `request-review`, `review-reactions`, `self-improve`, `standup-update`,
-`summarize` and `update-shared-workflows`.
+`summarize`, `token-usage` and `update-shared-workflows`.
 
 ## Verification
 
