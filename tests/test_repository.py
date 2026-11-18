@@ -518,7 +518,7 @@ class ProjectFileTests(unittest.TestCase):
         entry = data["plugins"][0]
         self.assertEqual(set(entry), {"name", "description", "version", "source"})
         self.assertEqual(entry["name"], "digits")
-        self.assertEqual(entry["version"], "1.0.0")
+        self.assertEqual(entry["version"], "1.0.1")
         self.assertEqual(entry["source"], "./plugin")
         self.assertTrue(entry["description"].strip())
         manifest = REPO_ROOT / "plugin" / "plugin.json"

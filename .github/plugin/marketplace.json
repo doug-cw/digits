@@ -7,7 +7,7 @@
     {
       "name": "digits",
       "description": "Copilot CLI workflows that wait for your approval: handling PR review feedback, rebasing, investigating, drafting standups, coordinating several environments, and improving context by proposing changes before making any.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "source": "./plugin"
     }
   ]

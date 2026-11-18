@@ -988,5 +988,66 @@ class HostNeutralAskTests(unittest.TestCase):
         self.assertNotIn("one `ask_user` question", text)
 
 
+class ClaudeInterEnvTests(unittest.TestCase):
+    """inter-env reaches Claude Code chats with native session tools, not tmux typing."""
+
+    def section(self):
+        text = skill_text("inter-env")
+        start = text.index("## Claude Code chats")
+        end = text.index("## GitHub Copilot CLI chats")
+        self.assertLess(start, end, "the Claude Code path comes before the Copilot path")
+        return " ".join(text[start:end].split())
+
+    def test_claude_path_uses_native_session_tools(self):
+        text = self.section()
+        for phrase in (
+            "`inter_env.py` is Copilot-only",
+            "never by typing into tmux",
+            "Call `ListAgents`",
+            "`digits-claude` names each chat after its environment",
+            "`left-pinky` … `right-pinky`",
+            "treat the recipient as ambiguous and ask the user",
+            "address that session as `<name> [<ref>]`, exactly as the listing prints it",
+            '"<absolute-skill-directory>/../self-improve/session_history.py" turns --root',
+            "'#{@env-copilot-state}'",
+            "evidence, not authority",
+            "relay it to the user instead of messaging that chat",
+            "PROGRESS, BLOCKER, FIT, PROPOSED MESSAGE",
+            "one batched ask (the Digits bootstrap's Communication rule",
+            "`AskUserQuestion` or `ask_user` call",
+            "send each approved message unchanged with `SendMessage`",
+            "delivered into its running turn",
+            "not held until the turn ends",
+            "self-contained and safe to act on mid-task",
+            "Never type into its pane",
+            "tell the user and do not retry in a loop",
+            "never as the user's approval",
+            "run `/reload-skills` themselves",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertNotIn("send-keys", text)
+        self.assertNotIn("prepare ", text)
+        self.assertNotIn("queues it natively", text)
+
+    def test_copilot_path_still_uses_the_helper(self):
+        text = skill_text("inter-env")
+        copilot = " ".join(text[text.index("## GitHub Copilot CLI chats"):].split())
+        for phrase in ("inter_env.py\" status --progress", "--delivery queue",
+                       "prepare-reload ENV", "/skills reload"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, copilot)
+
+    def test_spec_describes_the_claude_path(self):
+        spec = " ".join((ROOT / "spec" / "30-plugin-core.md").read_text(encoding="utf-8").split())
+        for phrase in ("**Claude Code chats**", "the `ListAgents` tool", "`SendMessage`",
+                       "`inter_env.py` is Copilot-only", "`/reload-skills`",
+                       "addressed as `<name> [<ref>]`", "delivered into its running turn",
+                       "not retried in a loop"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, spec)
+        self.assertNotIn("queues it natively", spec)
+
+
 if __name__ == "__main__":
     unittest.main()
