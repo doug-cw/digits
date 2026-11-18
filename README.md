@@ -41,7 +41,9 @@ versions. Issues and pull requests are welcome.
 - [tmux](https://github.com/tmux/tmux).
 - Python 3.9 or newer.
 - Node.js.
-- [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli).
+- [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), or
+  [Claude Code](https://code.claude.com/docs) for the dashboard (see
+  [Claude Code](#claude-code)). The plugin and context library target Copilot.
 - Optional: fish. The launcher opens a fish login shell in every environment
   when fish is installed, and your login shell (`$SHELL`) otherwise.
 - Optional: [Ghostty](https://ghostty.org/) for the keyboard shortcuts, and
@@ -76,6 +78,9 @@ directories that do not exist yet.
 It does not clone repositories, start chats, sign you in to anything, or edit
 your Copilot settings, Ghostty configuration, MCP configuration or global tmux
 configuration.
+
+For Claude Code instead of Copilot, add `--host claude` to both commands and
+follow [Claude Code](#claude-code).
 
 ### Plugin
 
@@ -159,6 +164,31 @@ The view redraws every second using tmux's own format strings. Chat states
 come from Copilot lifecycle events and SDK snapshots rather than polling. If
 tracking breaks, the entry shows UNKNOWN and the extension retries with a
 capped backoff.
+
+### Claude Code
+
+The dashboard also works with Claude Code chats. Claude Code has no extension
+SDK, so a hook script publishes the same states:
+
+```bash
+python3 install.py --host claude            # preview
+python3 install.py --host claude --apply    # installs ~/.claude/hooks/digits-env-dashboard.py
+```
+
+The installer never edits Claude Code settings. Merge the `hooks` from
+[claude/settings.json](claude/settings.json) into `~/.claude/settings.json`
+yourself, then start `claude` in any environment. Chats that were already
+running keep the hooks they started with.
+
+Claude Code chats show READY, WORKING, SUBAGENTS, NEEDS YOU, YOUR TURN and
+ERROR. WATCHING is not produced, and the Markdown shortcut has no session
+folder to open. Claude Code sends no event when you approve a permission or
+press Esc, so NEEDS YOU lasts until the next tool event (for a long-running
+approved command, until it ends), and an
+interrupted chat shows WORKING until Claude Code reports it idle (about a
+minute) or you type again. The hook only touches panes in the `ai-agents`
+session; your other Claude Code chats are left alone. Claude Code's own
+after-turn background agents are ignored, so a finished chat stays on YOUR TURN.
 
 ### Shortcuts
 
@@ -268,6 +298,7 @@ Copilot settings; the installer never applies it.
 bin/                 launcher (ai-agents) and Markdown viewer (md-view)
 terminal/            dashboard tmux configuration and optional tmux/Ghostty fragments
 copilot/             dashboard extension and a reviewed settings example
+claude/              Claude Code dashboard hook and its settings fragment
 plugin/              the digits Copilot CLI plugin: skills and lifecycle extensions
 context/             bootstrap, topic pages and version of the context library
 examples/            private-binding templates

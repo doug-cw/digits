@@ -22,6 +22,9 @@ MUST be reproduced exactly unless the text says the wording is free.
 | `terminal/ghostty-keybindings.conf` | 100644 | not installed | | Optional Ghostty key bindings |
 | `terminal/ghostty.conf` | 100644 | not installed | | Optional Ghostty bell settings |
 | `copilot/settings.json` | 100644 | not installed | | Reviewed Copilot settings example |
+| `claude/hooks/env_dashboard.py` | 100755 | `.claude/hooks/digits-env-dashboard.py` | `0755` | Claude Code dashboard hook (section 5a; installed with `--host claude`) |
+| `claude/settings.json` | 100644 | not installed | | Claude Code hook registrations for the user to merge |
+| `tests/test_claude_hook.py` | 100644 | not installed | | Claude Code hook tests |
 | `install.py` | 100644 | not installed | | Preview-first installer/remover |
 | `tests/test_installer.py`, `tests/test_launcher.py` | 100644 | not installed | | Python `unittest` suites |
 
@@ -61,15 +64,20 @@ Python standard library. Neither has a `.py` suffix; tests load them by path.
 
 ### 2.1 Pane options written by the extension (the dashboard data contract)
 
-All are tmux **pane** user options on the pane in which Copilot runs.
+All are tmux **pane** user options on the pane in which the chat runs. The
+Copilot extension (section 5) and the Claude Code hook (section 5a) write the
+same options, so the dashboard renders both hosts alike.
 
 | Option | Value | Written by |
 |---|---|---|
-| `@env-dashboard-owner` | Decimal PID of the Copilot process hosting the extension | extension |
+| `@env-dashboard-owner` | Copilot: decimal PID of the Copilot process hosting the extension. Claude Code: the session id | extension or hook |
 | `@env-copilot-state` | One of `READY`, `WORKING`, `SUBAGENTS`, `WATCHING`, `NEEDS YOU`, `ERROR`, `YOUR TURN`, `UNKNOWN` | extension |
 | `@env-copilot-since` | Decimal Unix seconds, or empty string | extension |
 | `@env-copilot-took` | Decimal non-negative seconds, or empty string | extension |
-| `@env-session-dir` | Absolute local session-state folder of the chat; unset when none/remote | extension |
+| `@env-session-dir` | Absolute local session-state folder of the chat; unset when none/remote (Copilot only) | extension |
+| `@env-claude-agents` | Space-separated ids of the Claude Code chat's running subagents; unset when none | hook |
+| `@env-dashboard-host` | `claude` on a pane claimed by the Claude Code hook; never set by the Copilot extension. The dashboard recognises non-Copilot chats by it (section 6.2) | hook |
+| `@env-claude-resume` | The running state (`WORKING` or `SUBAGENTS`) to return to after `NEEDS YOU`; unset otherwise | hook |
 | `@env-waiting-reason` | Free text typed by the user; empty or unset means none | right-click prompt |
 | `@env-waiting-owner` | Copy of `@env-dashboard-owner` at the moment a reason was saved | right-click prompt |
 
@@ -541,6 +549,106 @@ are logged with a message containing `cleanup failed`.
 The extension never polls: lifecycle events, the initial snapshot, and
 event-triggered reconciles are the only inputs.
 
+## 5a. Claude Code hook `claude/hooks/env_dashboard.py`
+
+Claude Code has no extension SDK, so the same data contract (section 2.1) is
+published from Claude Code
+[hooks](https://code.claude.com/docs/en/hooks). The script is installed by
+`install.py --host claude` and registered by the user, who merges
+`claude/settings.json` into `~/.claude/settings.json`; the installer never
+edits Claude Code settings. Registered events: `SessionStart`, `SessionEnd`,
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
+`PermissionRequest`, `Notification`, `SubagentStart`, `SubagentStop`, `Stop`,
+`StopFailure`.
+
+### 5a.1 Transport
+
+- Each hook run reads one JSON object from stdin. Outside tmux (`TMUX` or a
+  `%<n>` `TMUX_PANE` missing) it does nothing. The socket path is `TMUX` minus
+  its last two comma-separated fields, as in section 5.2.
+- It reads the pane's session name and its `@env-dashboard-owner`,
+  `@env-copilot-state`, `@env-copilot-since`, `@env-copilot-took`,
+  `@env-claude-agents`, `@env-dashboard-host` and `@env-claude-resume` in one
+  `display-message`. Unless the session is
+  `ai-agents` it stops there: the hooks are registered for every Claude Code
+  chat, and panes outside the dashboard are never touched. Otherwise it applies the transition (5a.2) and writes only the options
+  whose value changes in one chained command (`set-option -p`, or `-p -u` to
+  unset). It then runs `refresh-client -S`, ignoring its failure (no client is
+  attached).
+- Read, transition and write happen under an exclusive `flock` on a lock file
+  in the temporary directory named after the user id, socket and pane, because
+  hooks for parallel tool calls overlap.
+- It always exits 0 and never writes to stdout. Invalid input or a tmux failure
+  prints one `Digits dashboard hook: <detail>` line to stderr.
+- `transition(current, event, now)` is importable and pure: `current` maps the
+  seven options to strings (`""` when unset), `now` is whole Unix seconds, and
+  the result maps options to new values (None unsets).
+- Besides the shared contract it keeps three options of its own:
+  `@env-dashboard-host` (`claude`, set whenever it claims a pane; the dashboard
+  keys on it, section 6.2), `@env-claude-agents` (running subagent ids) and
+  `@env-claude-resume` (the running state to return to after `NEEDS YOU`).
+
+### 5a.2 Transitions
+
+"Finish" sets the state to `YOUR TURN`, `took` to now − `since` (when `since`
+is a number) and `since` to now. Rules, first match wins:
+
+1. `SessionStart` with a non-empty `agent_id` (a child agent): no change.
+   With source `compact`: claim the pane (owner = session id, host `claude`)
+   if it is not already claimed that way; nothing else, because compaction can
+   happen mid-turn. Any other `SessionStart`: claim the pane, state `READY`,
+   every other option unset.
+2. If the pane has an owner other than this session: no change.
+3. Otherwise every change below also claims the pane when it is unowned or
+   lacks the host marker.
+4. `SessionEnd`: unset all seven options (if the pane was owned).
+5. `PermissionRequest`, or `Notification` of type `permission_prompt`,
+   `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` or
+   `worker_permission_prompt`, from the chat or any of its agents: `NEEDS YOU`;
+   when the state was `WORKING` or `SUBAGENTS`, `@env-claude-resume` records it.
+5b. `PreToolUse`, `PostToolUse` or `PostToolUseFailure` from a child agent
+   while `NEEDS YOU`: the approval was given, so the state returns to
+   `@env-claude-resume` (or `WORKING`), which is unset.
+6. An event with a non-empty `agent_id` comes from a child agent and never
+   starts or finishes the parent's turn. With an empty `agent_type` (Claude
+   Code's own background agents, which report after `Stop`): no change.
+   `SubagentStart` adds the id to `@env-claude-agents`; `SubagentStop` removes
+   it. If the last one stopped while the state is `SUBAGENTS`, or `NEEDS YOU`
+   with `SUBAGENTS` to resume: finish. If one
+   is running while the state is `YOUR TURN`: `SUBAGENTS`. Any other child
+   event: no change.
+7. `UserPromptSubmit`: `WORKING`, `took` unset; `since` is kept when the state
+   was `WORKING` (a prompt queued mid-turn), otherwise now. A subagent's result
+   delivered as a prompt after `Stop` cannot be told apart from a typed one, so
+   it starts a fresh run.
+8. `PreToolUse`, `PostToolUse`, `PostToolUseFailure`: `WORKING`; `since` is
+   kept while `WORKING`, `SUBAGENTS` or `NEEDS YOU`, otherwise now (and `took`
+   unset).
+9. `Notification` of type `idle_prompt` while `WORKING` or `SUBAGENTS`: finish
+   (the turn ended without `Stop`, for example after an interrupt). Otherwise no
+   change.
+10. `Stop`: `SUBAGENTS` when `@env-claude-agents` is non-empty or the event's
+    `background_tasks` lists a running task of type `agent`; otherwise finish. A running background shell alone is not WATCHING: the
+    chat is idle and does not wait on it.
+11. `StopFailure`: `ERROR`, `@env-claude-agents` unset.
+12. Anything else: no change.
+
+Rules 7, 8, 10 and 11 also unset `@env-claude-resume` when they leave
+`NEEDS YOU`.
+
+Known limits, because Claude Code has no matching hook: approving a
+permission sends no event, so `NEEDS YOU` lasts until the next tool event of
+the chat or of the agent that asked (for the main chat, usually the approved
+tool's `PostToolUse`; a long-running approved command keeps it until it ends); an interrupt (Esc) sends no `Stop`, so a running
+state lasts until `idle_prompt` (about a minute) or the next prompt, and a
+`NEEDS YOU` interrupted that way lasts until the next prompt.
+
+`WATCHING`, `UNKNOWN` and `@env-session-dir` are not produced for Claude Code.
+Claude Code reports its version number as the pane's current command, so the
+dashboard recognises its panes by the host marker `@env-dashboard-host`
+(section 6.2, `@hand-status-agent`), not by name. The Copilot extension never
+sets that marker, so a Copilot pane is still recognised only by name.
+
 ## 6. Dashboard tmux configuration (`terminal/ai-agents.conf`)
 
 Every setting in this file targets the `ai-agents` session explicitly
@@ -567,10 +675,20 @@ three formats `@hand-status-activity`, `@hand-status-timer` and
 `@hand-status-title` MUST test the running program with the literal token
 `#{pane_current_command}` (tests substitute it with `copilot`).
 
+A pane is a **chat** when its current command is `copilot`, or when it is
+claimed by another host (`@hand-status-agent`). Other hosts are recognised by
+the host marker `@env-dashboard-host` they set, never by program name (an
+owner alone, which a crashed Copilot extension can leave behind, is not
+enough): Claude Code, for example, reports its
+version number as the pane's current command. Requiring a non-shell
+foreground program means a host that exits without cleaning up leaves a
+`READY` pane rather than a stale state.
+
 | Option | Evaluates to |
 |---|---|
 | `@hand-status-idle-pattern` | Regular expression matching exactly the idle label set (section 2.1), anchored at both ends |
-| `@hand-status-activity` | `ERROR` if the pane is dead; else if the pane's current command is `copilot`: when `@env-copilot-state` is non-empty, `YOUR TURN` if it matches the idle pattern, else the state verbatim (`UNKNOWN`, `NEEDS YOU`, …); when empty or unset, `COPILOT`; else if the current command is exactly one of `fish`, `zsh`, `bash`, `sh`, `dash`, `ksh`: `READY`; else `WORKING` (some other foreground program) |
+| `@hand-status-agent` | True (`1`) when `@env-dashboard-host` is non-empty **and** the pane's current command is not exactly one of `fish`, `zsh`, `bash`, `sh`, `dash`, `ksh` |
+| `@hand-status-activity` | `ERROR` if the pane is dead; else if the pane is a chat (its current command is `copilot`, or `@hand-status-agent`): when `@env-copilot-state` is non-empty, `YOUR TURN` if it matches the idle pattern, else the state verbatim (`UNKNOWN`, `NEEDS YOU`, …); when empty or unset, `COPILOT`; else if the current command is exactly one of `fish`, `zsh`, `bash`, `sh`, `dash`, `ksh`: `READY`; else `WORKING` (some other foreground program) |
 | `@hand-status-idle` | True (`1`) when the activity matches the idle pattern (i.e. is `YOUR TURN`) |
 | `@hand-status-state` | `WAITING` when idle and `@env-waiting-reason` is non-empty; else the activity |
 | `@hand-status-state-style` | Style for the state (6.4) |
@@ -641,7 +759,7 @@ Duration of `s` seconds (integer division, no zero padding):
 | s < 86400 | `<s/3600>h<(s/60) mod 60>m` | `1h0m`, `23h59m` |
 | otherwise | `<s/86400>d<(s/3600) mod 24>h` | `1d0h`, `1d1h` |
 
-Timer (empty unless the pane's current command is `copilot` **and**
+Timer (empty unless the pane is a chat (section 6.2) **and**
 `@env-copilot-since` is non-empty):
 - activity `WORKING`, `SUBAGENTS` or `WATCHING`: the duration of the age (run
   elapsed time), e.g. `1m23s`.
@@ -666,7 +784,8 @@ Concatenation of:
    `Fix flaky test - GitHub Copilot` → `Fix flaky test`;
    `GitHub Copilot setup - GitHub Copilot` → `GitHub Copilot setup` (only the
    suffix goes); `GitHub Copilotish` → unchanged (no exact suffix match).
-   Non-Copilot panes contribute nothing.
+   For a pane claimed by another host (`@hand-status-agent`), the pane title
+   with every `#[` replaced by `# [`. Other panes contribute nothing.
 
 ### 6.7 Waiting reasons
 
@@ -832,7 +951,7 @@ MUST have no side effects (the command line runs only under `__main__`).
 
 ### 9.1 Command line
 
-`python3 install.py [--apply] [--uninstall] [--home PATH]`
+`python3 install.py [--apply] [--uninstall] [--home PATH] [--host copilot|claude]`
 
 | Flag | Effect |
 |---|---|
@@ -840,11 +959,12 @@ MUST have no side effects (the command line runs only under `__main__`).
 | `--apply` | Perform the previewed changes |
 | `--uninstall` | Preview removal (combine with `--apply` to remove) |
 | `--home PATH` | Destination home (default: the user's home); `~` is expanded and the path made absolute (symlinks not resolved). Useful for trials |
+| `--host HOST` | Agent host whose chats feed the dashboard: `copilot` (default) or `claude`; any other value is an argument error |
 
 Prerequisites (checked for install previews and installs, **not** for
 uninstall): the platform must be macOS (`Darwin`), else fail with a message
-that only macOS is supported; `tmux`, `node` and `copilot` must be on
-`PATH`, else fail listing the missing names comma-separated after a request to
+that only macOS is supported; the host's commands must be on `PATH`
+(`copilot`: `tmux`, `node`, `copilot`; `claude`: `tmux`, `claude`, `python3`), else fail listing the missing names comma-separated after a request to
 install them first.
 
 Exit status: 0 on success (`main` returns 0); on validation, OS or rollback
@@ -858,23 +978,34 @@ lock: compute the plan, print it, execute it. Then print:
 - install: the text `Installed. Launch from your terminal:` then a space and
   the absolute launcher path under the target home, and a second line saying no session was started and existing Copilot chats
   need an idle restart or reload;
+- install with `--host claude`: the launch line, then a note that the
+  installer never edits settings and that the hooks in `claude/settings.json`
+  must be merged into `~/.claude/settings.json` and new chats started. The
+  same note follows a `--host claude` preview;
 - uninstall: a line saying unchanged owned files were removed and running
   sessions were not stopped, and a line advising an idle reload/restart of
-  Copilot to unload the extension.
+  Copilot to unload the extension; when the uninstall removed the Claude Code
+  hook, a third line reminding the user to remove the Digits hooks from
+  `~/.claude/settings.json`.
 
 ### 9.2 Managed set
 
-- Files: the five installed files of section 1 with their modes (installer
-  table order: `ai-agents`, `md-view`, `ai-agents.conf`, `extension.mjs`,
-  `state.mjs`). Sources are read from the repository directory containing
+- Files: the common files `ai-agents`, `md-view`, `ai-agents.conf`, then the
+  host's: `extension.mjs` and `state.mjs` for `copilot`, the hook for
+  `claude` (section 1 modes). An install writes the common and selected host
+  files; files owned for the other host stay in place and in the receipt, so
+  switching hosts never orphans them; uninstall removes every owned file. Sources are read from the repository directory containing
   `install.py` (resolved).
 - Receipt: `.local/state/digits/dashboard.json`, mode `0600`.
 - Managed directories: the ten environment directories plus every ancestor
-  (below home) of the five files and the receipt: `.local`, `.local/bin`,
-  `.local/state`, `.local/state/digits`, `.tmux`, `.copilot`,
-  `.copilot/extensions`, `.copilot/extensions/env-dashboard` (18 in total).
+  (below home) of the installed files and the receipt: `.local`, `.local/bin`,
+  `.local/state`, `.local/state/digits`, `.tmux`, and the host's `.copilot`,
+  `.copilot/extensions`, `.copilot/extensions/env-dashboard` or `.claude`,
+  `.claude/hooks`. Only the selected host's directories are created; a receipt
+  may list either host's.
 - Never touched: `~/.tmux.conf`, `~/.tmux/ai-agents-shortcuts.conf`, Ghostty
-  configuration, `~/.copilot/settings.json`, MCP configuration, repositories.
+  configuration, `~/.copilot/settings.json`, `~/.claude/settings.json`, MCP
+  configuration, repositories.
   The installer never starts sessions or chats and never authenticates.
 
 ### 9.3 Path safety
@@ -1378,3 +1509,34 @@ empty, print `No file changes needed.`
     it is an absolute path to an executable file, and absent for a relative
     name or a missing file; new windows start in that shell. Given fish is
     present, it wins over the login shell.
+
+### 11.8 Claude Code host
+
+90. Given a pane running a non-shell program with a published state but no
+    `@env-dashboard-host`, then it renders `WORKING`, also when only
+    `@env-dashboard-owner` is set (a crashed Copilot extension); once the host
+    marker is set, the published state, timer and style-neutralised pane title; once the
+    program exits back to a shell with the options still set, `READY` with an
+    empty timer and title.
+91. Given `--host claude`, then the preview lists the hook and the settings
+    note and writes nothing; `--apply` installs the hook (`0755`, identical to
+    the source), the common files and the environments, but nothing under
+    `.copilot` and no `~/.claude/settings.json`; a second plan is empty.
+92. Given a `copilot` install followed by `claude` and then `copilot` again,
+    then the receipt keeps both hosts' files throughout, and uninstall leaves an
+    empty home. Uninstall output reminds the user to remove the Digits hooks
+    from `~/.claude/settings.json` only when it removed the Claude Code hook.
+93. Given the `claude` host with no commands on `PATH`, then the installer
+    fails naming `tmux, claude, python3`; an unknown host is an argument error.
+94. Hook transitions (pure): every rule of section 5a.2, including the captured
+    orders "Stop, then `SubagentStop` with an empty type" (stays `YOUR TURN`) and
+    "Agent tool returns, `Stop`, `SubagentStop`, result prompt" (`SUBAGENTS`,
+    then `YOUR TURN` with the run's duration, then a fresh `WORKING`).
+95. Hook against an isolated tmux server running `terminal/ai-agents.conf` and
+    a non-shell foreground program: unclaimed `WORKING`; after `SessionStart`
+    `READY`; `NEEDS YOU` on a permission request; `YOUR TURN` with timer
+    `1m15s @HH:MM` after a 75 s turn; unchanged by a later empty-type
+    `SubagentStop`; every option unset after `SessionEnd`; a pane in another
+    tmux session is never touched. Outside tmux or with
+    invalid input it exits 0 and changes nothing; run as an executable it
+    writes nothing to stderr.

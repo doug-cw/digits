@@ -280,7 +280,7 @@ class TmuxTestCase(unittest.TestCase):
             )
 
     def install_workbench(self):
-        with mock.patch.object(install, "check_prerequisites", lambda: None):
+        with mock.patch.object(install, "check_prerequisites", lambda *_host: None):
             install.execute(self.home, install.build_plan(self.home))
         self.launcher.CONFIG = self.home / ".tmux/ai-agents.conf"
         self.tmux("set-environment", "-g", "HOME", str(self.home))
@@ -522,6 +522,34 @@ class DashboardTests(TmuxTestCase):
         self.tmux("send-keys", "-t", self.window(3), "sleep 30", "Enter")
         self.assertTrue(poll(lambda: self.evaluate(3, "#{pane_current_command}") == "sleep"))
         self.assertEqual(self.state(3), "WORKING")
+
+    def test_90_other_host_claims_pane(self):
+        # A host that is not matched by name (Claude Code reports its version
+        # number as the command) publishes state once it owns the pane.
+        self.tmux("send-keys", "-t", self.window(4), "sleep 30", "Enter")
+        self.assertTrue(poll(lambda: self.evaluate(4, "#{pane_current_command}") == "sleep"))
+        self.pane_set(4, "@env-copilot-state", "NEEDS YOU")
+        self.assertEqual(self.state(4), "WORKING")  # unclaimed: just a program
+        # An owner alone is what a crashed Copilot extension leaves behind:
+        # that pane keeps Copilot's old rule and shows WORKING.
+        self.tmux("set-option", "-p", "-t", self.window(4), "@env-dashboard-owner", "4242")
+        self.assertEqual(self.state(4), "WORKING")
+        self.assertEqual(self.evaluate(4, "#{E:@hand-status-title}"), "")
+        self.tmux("set-option", "-p", "-t", self.window(4), "@env-dashboard-host", "claude")
+        self.assertEqual(self.state(4), "NEEDS YOU")
+        self.tmux("set-option", "-t", "=ai-agents:", "@hand-status-now", "200000")
+        self.pane_set(4, "@env-copilot-state", "YOUR TURN")
+        self.pane_set(4, "@env-copilot-since", 200000 - 30)
+        self.pane_set(4, "@env-copilot-took", 75)
+        self.assertEqual(self.state(4), "YOUR TURN")
+        self.assertTrue(self.evaluate(4, "#{E:@hand-status-timer}").startswith("1m15s @"))
+        self.tmux("select-pane", "-t", self.window(4), "-T", "Fix #[fg=red]flaky test")
+        self.assertEqual(self.evaluate(4, "#{E:@hand-status-title}"), "Fix # [fg=red]flaky test")
+        # The host exits without cleaning up: a plain shell is READY again.
+        self.tmux("send-keys", "-t", self.window(4), "C-c", "")
+        self.assertTrue(poll(lambda: self.state(4) == "READY"))
+        self.assertEqual(self.evaluate(4, "#{E:@hand-status-timer}"), "")
+        self.assertEqual(self.evaluate(4, "#{E:@hand-status-title}"), "")
 
 
 class AttentionTests(TmuxTestCase):

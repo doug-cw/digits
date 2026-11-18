@@ -22,7 +22,7 @@ VIEWER = ".local/bin/md-view"
 CONF = ".tmux/ai-agents.conf"
 
 
-def no_prerequisites():
+def no_prerequisites(*_host):
     return None
 
 
@@ -307,6 +307,66 @@ class EdgeCaseTests(InstallerTestCase):
             code, _out, _err = self.run_main("--uninstall", "--apply")
             self.assertEqual(code, 0)
         self.assertEqual(self.listing(), [])
+
+
+class ClaudeHostTests(InstallerTestCase):
+    HOOK = ".claude/hooks/digits-env-dashboard.py"
+    EXTENSION = ".copilot/extensions/env-dashboard/extension.mjs"
+
+    def install_host(self, host):
+        install.execute(self.home, install.build_plan(self.home, host=host))
+
+    def test_91_claude_host_installs_hook_not_extension(self):
+        code, out, _err = self.run_main("--host", "claude")
+        self.assertEqual(code, 0)
+        self.assertIn(self.HOOK, out)
+        self.assertIn("claude/settings.json", out)
+        self.assertEqual(self.listing(), [])
+        self.assertEqual(self.run_main("--host", "claude", "--apply")[0], 0)
+        hook = self.home / self.HOOK
+        self.assertEqual(hook.read_bytes(), (REPO / "claude/hooks/env_dashboard.py").read_bytes())
+        self.assertEqual(stat.S_IMODE(hook.stat().st_mode), 0o755)
+        self.assertFalse(os.path.lexists(str(self.home / ".copilot")))
+        self.assertFalse(os.path.lexists(str(self.home / ".claude/settings.json")))
+        for environment in install.ENVIRONMENTS:
+            self.assertTrue((self.home / environment).is_dir(), environment)
+        again = install.build_plan(self.home, host="claude")
+        self.assertEqual((again["writes"], again["create"]), ({}, []))
+
+    def test_92_switching_hosts_keeps_ownership_and_uninstalls_everything(self):
+        self.install_host("copilot")
+        self.install_host("claude")
+        files = self.receipt()["files"]
+        self.assertIn(self.EXTENSION, files)
+        self.assertIn(self.HOOK, files)
+        self.assertTrue((self.home / self.EXTENSION).is_file())
+        self.install_host("copilot")
+        self.assertIn(self.HOOK, self.receipt()["files"])
+        self.uninstall()
+        self.assertEqual(self.listing(), [])
+
+    def test_92_uninstall_mentions_claude_settings_only_with_the_hook(self):
+        note = "Remove the Digits hooks from ~/.claude/settings.json"
+        self.install_host("copilot")
+        code, out, _err = self.run_main("--uninstall", "--apply")
+        self.assertEqual(code, 0)
+        self.assertNotIn(note, out)
+        self.install_host("claude")
+        code, out, _err = self.run_main("--uninstall", "--apply")
+        self.assertEqual(code, 0)
+        self.assertIn(note, out)
+
+    def test_93_host_prerequisites(self):
+        mock.patch.stopall()
+        with mock.patch.object(install.shutil, "which", lambda name: None), mock.patch.object(
+            install.platform, "system", lambda: "Darwin"
+        ):
+            code, _out, err = self.run_main("--host", "claude")
+            self.assertEqual(code, 1)
+            self.assertIn("tmux, claude, python3", err)
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                install.main(["--host", "codex"])
 
 
 if __name__ == "__main__":
