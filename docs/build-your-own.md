@@ -307,7 +307,8 @@ official documentation before trusting a path or format.
 | Lifecycle hooks and extensions | The experimental extension SDK used by the dashboard, `digits-refresh` and `session-done` | Whatever hooks the host offers; without an equivalent, leave the dashboard layer out |
 | Packaging | An Agent Plugins 1.0 marketplace | The host's own plugin format, or plain directories plus an installer |
 
-A port only touches the installer's target path and the packaging. The
+The dashboard already has a Claude Code port: `claude/hooks/env_dashboard.py`
+publishes the same pane options from Claude Code hooks (see the README). A port only touches the installer's target path and the packaging. The
 bootstrap, pages, bindings, fixtures and guards carry over unchanged, and one
 prompt text serves every model family; do not fork it per model.
 

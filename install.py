@@ -23,21 +23,47 @@ REPO = Path(__file__).resolve().parent
 
 # (repository source, destination relative to home, installed mode), in
 # installer table order.
-FILES = (
+COMMON_FILES = (
     ("bin/ai-agents", ".local/bin/ai-agents", 0o755),
     ("bin/md-view", ".local/bin/md-view", 0o755),
     ("terminal/ai-agents.conf", ".tmux/ai-agents.conf", 0o644),
-    (
-        "copilot/extensions/env-dashboard/extension.mjs",
-        ".copilot/extensions/env-dashboard/extension.mjs",
-        0o644,
-    ),
-    (
-        "copilot/extensions/env-dashboard/state.mjs",
-        ".copilot/extensions/env-dashboard/state.mjs",
-        0o644,
-    ),
 )
+
+# Files that connect one agent host's chats to the dashboard (--host).
+HOST_FILES = {
+    "copilot": (
+        (
+            "copilot/extensions/env-dashboard/extension.mjs",
+            ".copilot/extensions/env-dashboard/extension.mjs",
+            0o644,
+        ),
+        (
+            "copilot/extensions/env-dashboard/state.mjs",
+            ".copilot/extensions/env-dashboard/state.mjs",
+            0o644,
+        ),
+    ),
+    "claude": (
+        (
+            "claude/hooks/env_dashboard.py",
+            ".claude/hooks/digits-env-dashboard.py",
+            0o755,
+        ),
+    ),
+}
+HOSTS = tuple(HOST_FILES)
+CLAUDE_HOOK = ".claude/hooks/digits-env-dashboard.py"
+DEFAULT_HOST = "copilot"
+
+
+def files_for(host=DEFAULT_HOST):
+    """The installer table for one host: the common files, then the host's."""
+    if host not in HOST_FILES:
+        raise ValueError("Unknown host: {}".format(host))
+    return COMMON_FILES + HOST_FILES[host]
+
+
+FILES = files_for(DEFAULT_HOST)
 
 RECEIPT = ".local/state/digits/dashboard.json"
 RECEIPT_MODE = 0o600
@@ -58,6 +84,7 @@ ENVIRONMENTS = (
 )
 
 PREREQUISITES = ("tmux", "node", "copilot")
+HOST_PREREQUISITES = {"copilot": PREREQUISITES, "claude": ("tmux", "claude", "python3")}
 
 
 def _depth_key(relative):
@@ -69,16 +96,18 @@ def _ancestors(relative):
     return ["/".join(parts[: i + 1]) for i in range(len(parts))]
 
 
-def _managed_directories():
+def _managed_directories(files):
     found = set(ENVIRONMENTS)
-    for _source, destination, _mode in FILES:
+    for _source, destination, _mode in files:
         found.update(_ancestors(destination))
     found.update(_ancestors(RECEIPT))
     return sorted(found, key=_depth_key)
 
 
-MANAGED_DIRECTORIES = tuple(_managed_directories())
-MANAGED_FILES = tuple(destination for _source, destination, _mode in FILES)
+ALL_FILES = COMMON_FILES + tuple(entry for host in HOSTS for entry in HOST_FILES[host])
+# Everything any host may own; a receipt is valid when it stays within this.
+MANAGED_DIRECTORIES = tuple(_managed_directories(ALL_FILES))
+MANAGED_FILES = tuple(destination for _source, destination, _mode in ALL_FILES)
 
 
 # --- Shared low-level helpers (also used by context_install.py) -------------
@@ -284,8 +313,14 @@ def _empty_plan():
     return {"create": [], "writes": {}, "remove": [], "prune": []}
 
 
-def build_plan(home, uninstall=False, source=None):
-    """Compute the install (or uninstall) plan for ``home``."""
+def build_plan(home, uninstall=False, source=None, host=DEFAULT_HOST):
+    """Compute the install (or uninstall) plan for ``home``.
+
+    An install writes the common files and ``host``'s files. Files owned for
+    another host are left in place and stay in the receipt, so switching hosts
+    never orphans them; an uninstall removes everything the receipt owns.
+    """
+    files = files_for(host)
     home = _validate_home(home)
     source = Path(source) if source is not None else REPO
     receipt = read_receipt(home)
@@ -300,7 +335,7 @@ def build_plan(home, uninstall=False, source=None):
     owned = receipt["files"] if receipt is not None else {}
     plan = _empty_plan()
     new_files = {}
-    for source_relative, relative, mode in FILES:
+    for source_relative, relative, mode in (ALL_FILES if uninstall else files):
         if uninstall and relative not in owned:
             continue
         path = checked_path(home, relative)
@@ -328,7 +363,11 @@ def build_plan(home, uninstall=False, source=None):
         plan["prune"] = list(receipt["directories"])
         return plan
 
-    for relative in MANAGED_DIRECTORIES:
+    for relative in owned:
+        if relative not in new_files:
+            new_files[relative] = owned[relative]
+
+    for relative in _managed_directories(files):
         path = checked_path(home, relative)
         if not os.path.lexists(str(path)):
             plan["create"].append(relative)
@@ -353,11 +392,11 @@ def build_plan(home, uninstall=False, source=None):
 # --- Command line ------------------------------------------------------------
 
 
-def check_prerequisites():
-    """Fail unless running on macOS with the required commands on PATH."""
+def check_prerequisites(host=DEFAULT_HOST):
+    """Fail unless running on macOS with the host's required commands on PATH."""
     if platform.system() != "Darwin":
         raise ValueError("Only macOS is supported.")
-    missing = [name for name in PREREQUISITES if shutil.which(name) is None]
+    missing = [name for name in HOST_PREREQUISITES[host] if shutil.which(name) is None]
     if missing:
         raise ValueError(
             "Please install these commands first: {}".format(", ".join(missing))
@@ -371,6 +410,10 @@ def _parse(argv):
     parser.add_argument("--apply", action="store_true", help="perform the previewed changes")
     parser.add_argument("--uninstall", action="store_true", help="remove the installed files")
     parser.add_argument("--home", help="destination home directory (default: your home)")
+    parser.add_argument(
+        "--host", choices=HOSTS, default=DEFAULT_HOST,
+        help="agent host whose chats feed the dashboard (default: copilot)",
+    )
     return parser.parse_args(argv)
 
 
@@ -380,16 +423,18 @@ def _run(args):
     else:
         home = Path(os.path.abspath(str(Path.home())))
     if not args.uninstall:
-        check_prerequisites()
+        check_prerequisites(args.host)
     if not args.apply:
-        show_plan(home, build_plan(home, args.uninstall))
+        show_plan(home, build_plan(home, args.uninstall, host=args.host))
+        if args.host == "claude" and not args.uninstall:
+            print(CLAUDE_HOOKS_NOTE)
         print("Preview only. Re-run with --apply to make changes.")
         return
     flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_DIRECTORY", 0)
     descriptor = os.open(str(home), flags)
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        plan = build_plan(home, args.uninstall)
+        plan = build_plan(home, args.uninstall, host=args.host)
         show_plan(home, plan)
         execute(home, plan)
     finally:
@@ -397,12 +442,24 @@ def _run(args):
     if args.uninstall:
         print("Removed unchanged owned files; running sessions were not stopped.")
         print("Reload or restart idle Copilot chats to unload the dashboard extension.")
+        if CLAUDE_HOOK in plan.get("remove", []):
+            print("Remove the Digits hooks from ~/.claude/settings.json if you added them.")
+    elif args.host == "claude":
+        print("Installed. Launch from your terminal: {}".format(home / ".local/bin/ai-agents"))
+        print(CLAUDE_HOOKS_NOTE)
     else:
         print("Installed. Launch from your terminal: {}".format(home / ".local/bin/ai-agents"))
         print(
             "No session was started; restart or reload existing Copilot chats "
             "while idle to load the dashboard extension."
         )
+
+
+CLAUDE_HOOKS_NOTE = (
+    "Claude Code: this installer never edits your settings. Merge the hooks in "
+    "claude/settings.json into ~/.claude/settings.json yourself, then start new "
+    "Claude Code chats (running ones keep the hooks they started with)."
+)
 
 
 def main(argv=None):

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "PostToolUseFailure": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "\"$HOME/.claude/hooks/digits-env-dashboard.py\"" }] }]
+  }
+}
