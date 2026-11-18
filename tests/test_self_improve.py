@@ -484,7 +484,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(list(manifest), ["$schema", "name", "version", "description", "license"])
         self.assertEqual(manifest["$schema"], "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json")
         self.assertEqual(manifest["name"], "digits")
-        self.assertEqual(manifest["version"], "1.0.0")
+        self.assertEqual(manifest["version"], "1.0.1")
         self.assertTrue(manifest["description"].strip())
         self.assertNotIn("\n", manifest["description"])
 

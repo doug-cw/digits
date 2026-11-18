@@ -2,7 +2,7 @@
 
 Status: normative for the clean-room build. Read `00-overview.md` first; its
 conventions (Python 3.9 standard library, Node.js 22 ES modules, bash helpers,
-isolated tests, no hardcoded home paths, version `1.0.0`, names) apply here.
+isolated tests, no hardcoded home paths, plugin version `1.0.1`, names) apply here.
 
 This file specifies:
 
@@ -111,7 +111,7 @@ A JSON object with exactly these five keys, in this order:
 |---|---|---|
 | 1 | `$schema` | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
 | 2 | `name` | `digits` |
-| 3 | `version` | `1.0.0` (must equal the marketplace entry's `version`) |
+| 3 | `version` | `1.0.1` (must equal the marketplace entry's `version`) |
 | 4 | `description` | One sentence, freshly worded, naming these capability areas: guarded Copilot CLI workflows for evidence-backed standup drafts; review requests and review-status reactions; PR feedback handling; draft PR sweeps; rebases; shared workflow version updates; investigations; coordination across environments; proposal-first improvement of the shared context. |
 | 5 | `license` | `MIT` |
 
@@ -201,7 +201,8 @@ first source that supplies it:
 own. They say *batched ask* and point at the Digits bootstrap's Communication
 rule (spec 20, section 13.2 item 8), naming both `ask_user` and
 `AskUserQuestion` in that pointer. The rule itself lives only in the bootstrap.
-`inter-env` is not yet converted and still names `ask_user`.
+`inter-env`'s Copilot section still names `ask_user` directly; its Claude Code
+section uses the batched ask.
 
 Identifiers (channel, user, group, project, field, cloud/site IDs) are never
 guessed or hardcoded; they are resolved through live tool discovery at run time.
@@ -1067,7 +1068,7 @@ never run by plugin installation.
 `name: inter-env`, one-line `description`, `user-invocable: true`. Description
 conveys: checks progress across the user's active environments, drafts scoped
 instructions between chats, and delivers individually approved messages through
-existing tmux panes; triggers: coordination between environments, handoffs,
+existing tmux panes or Claude Code's session messaging; triggers: coordination between environments, handoffs,
 checking other chats, sending instructions to another environment.
 
 ### 11.2 Body (MUST convey, in order)
@@ -1077,6 +1078,41 @@ One shared skill serves all ten environments. The agent always goes through the
 bundled helper; it never writes throwaway scripts, hardcodes pane identifiers,
 or spawns an extra headless Copilot. Helper requirements: Python 3.9+ standard
 library, tmux, ps and lsof. The helper path is resolved per rule 1.2.8.
+
+In Claude Code the agent skips the helper and follows a **Claude Code chats**
+section placed before every Copilot section (which is headed **GitHub Copilot
+CLI chats** and keeps the Copilot text below unchanged). It MUST convey:
+`inter_env.py` is Copilot-only and Claude Code chats are never typed into
+through tmux.
+
+1. Who is reachable: the `ListAgents` tool (`ListAgents` and `SendMessage` need
+   Claude Code v2.1.224 or later with cross-session messaging enabled; without
+   them only progress is reported). `digits-claude` (`10-workbench.md`
+   section 5a.3) names each chat after its environment (`left-pinky` …
+   `right-pinky`); the listing shows name, idle or busy, and tmux pane. Only
+   sessions named exactly one of the ten environment names are targets; the
+   agent's own session is skipped, and two sessions sharing a name make the
+   recipient ambiguous: ask the user, never pick by ref or recency; once the
+   user has chosen, that session is addressed as `<name> [<ref>]`, exactly as
+   the listing prints it.
+2. Progress: `python3 "<absolute-skill-directory>/../self-improve/session_history.py"
+   turns --root <absolute environment folder> --limit <n>` (section 12.6) plus
+   the pane's `@env-copilot-state` dashboard option in the `ai-agents` session.
+   Both are evidence, not authority, under the same rules as Inspect first steps
+   6 and 8. A chat in `NEEDS YOU` has an open prompt that is relayed to the user,
+   not messaged.
+3. Delivery: each message is drafted with the four labelled items of step 7,
+   all are approved in one batched ask (the bootstrap's Communication rule), and
+   each approved message is sent unchanged with `SendMessage` to that
+   environment name. A message to a busy chat is delivered into its running
+   turn (alongside its next tool result), not held until the turn ends, so
+   each message is self-contained and safe to act on mid-task; the pane is
+   never typed into. A `SendMessage` failure (for example a socket timeout) is
+   reported to the user, not retried in a loop. The recipient treats it as
+   a teammate's request, never as user approval; a skipped recipient gets
+   nothing; a chat is never asked to do what the sender's session was refused.
+4. Skill reload is not available remotely: the agent tells the user which
+   chats should run `/reload-skills`.
 
 **Inspect first.**
 
