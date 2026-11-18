@@ -34,12 +34,32 @@ chosen). Relative paths always use `/` separators.
 | `ENTRY` | `.copilot/copilot-instructions.md` | Auto-loaded entry file |
 | `LIBRARY` | `.copilot/context/digits/releases` | Parent of all release directories |
 | `STATE` | `.local/state/digits/context` | Private installer state |
-| `RECEIPT` | `.local/state/digits/context/receipt.json` | Ownership receipt |
-| `RETAINED` | `.local/state/digits/context/retained.json` | Retained-versions catalog |
-| backups dir | `.local/state/digits/context/backups/` | Rollback snapshots |
+| `RECEIPT` | `STATE + "/receipt.json"` | Ownership receipt |
+| `RETAINED` | `STATE + "/retained.json"` | Retained-versions catalog |
+| backups dir | `STATE + "/backups/"` | Rollback snapshots |
 | private root | `.config/digits/context` | Private bindings directory (rendered into text only; never read or written) |
 | file mode | `0600` | Mode of every file the installer writes (except a restored pre-existing entry, §8.4) |
 | directory mode | `0700` | Mode of every directory the installer creates |
+
+The values above are the `copilot` host layout, the default. `--host claude`
+selects the Claude Code layout, and every rule in this spec applies to it
+unchanged:
+
+| Name | `claude` value |
+|---|---|
+| `ENTRY` | `.claude/digits/CLAUDE.md` (not auto-loaded; see below) |
+| `LIBRARY` | `.claude/digits/context/releases` |
+| `STATE` | `.local/state/digits/context-claude` |
+
+Each host has its own receipt, so both can be installed, updated and rolled back
+independently. Claude Code does not discover `ENTRY`; the user either links it as
+`CLAUDE.md` into each environment folder, or adds the import line
+`@~/.claude/digits/CLAUDE.md` to `~/.claude/CLAUDE.md` (an import from outside a
+project needs a one-time approval per project, a link does not). The installer
+MUST NOT create or edit any `CLAUDE.md` other than `ENTRY`; for the `claude` host,
+both preview and apply of an install or update print both options (a rollback
+does not, because it never introduces a new entry). `main` MUST restore the
+previous host layout before returning.
 
 Path-shape rules (regular expressions are full-match):
 

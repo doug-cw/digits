@@ -43,8 +43,8 @@ versions. Issues and pull requests are welcome.
 - Node.js.
 - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), or
   [Claude Code](https://code.claude.com/docs) for the dashboard (see
-  [Claude Code](#claude-code)). The plugin also loads in Claude Code (its two
-  extensions are Copilot-only); the context library targets Copilot.
+  [Claude Code](#claude-code)). The plugin and context library also load in
+  Claude Code; the two plugin extensions are Copilot-only.
 - Optional: fish. The launcher opens a fish login shell in every environment
   when fish is installed, and your login shell (`$SHELL`) otherwise.
 - Optional: [Ghostty](https://ghostty.org/) for the keyboard shortcuts, and
@@ -113,6 +113,24 @@ If you already have a Copilot instruction file, the installer only takes it
 over when you adopt it explicitly with the hash shown in the preview
 (`--adopt-sha256`). Receipts, backups and private bindings stay on your
 machine. See [context/README.md](context/README.md) for details.
+
+For Claude Code, add `--host claude`. The installer writes
+`~/.claude/digits/CLAUDE.md` and its own receipt, and never edits your
+`CLAUDE.md` files. Claude Code does not load that file on its own. To use it
+only in the dashboard's chats, link it into each environment folder:
+
+```bash
+for d in left_pinky left_ring left_middle left_pointer left_thumb \
+         right_thumb right_pointer right_middle right_ring right_pinky; do
+  ln -s ~/.claude/digits/CLAUDE.md ~/$d/CLAUDE.md
+done
+```
+
+A link rather than an `@~/.claude/digits/CLAUDE.md` import line, because Claude
+Code asks once per folder before loading an import from outside it. To use it in
+every chat, add that import line to `~/.claude/CLAUDE.md` instead. The context
+links its topic pages under `~/.claude/digits/`; if Claude Code asks before
+reading them, allow `Read(~/.claude/digits/**)` in your Claude Code permissions.
 
 ### Integrations
 
