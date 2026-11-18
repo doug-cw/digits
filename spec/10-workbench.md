@@ -72,7 +72,7 @@ same options, so the dashboard renders both hosts alike.
 | Option | Value | Written by |
 |---|---|---|
 | `@env-dashboard-owner` | Copilot: decimal PID of the Copilot process hosting the extension. Claude Code: the session id | extension or hook |
-| `@env-copilot-state` | One of `READY`, `WORKING`, `SUBAGENTS`, `WATCHING`, `NEEDS YOU`, `ERROR`, `YOUR TURN`, `UNKNOWN` | extension |
+| `@env-copilot-state` | One of `READY`, `WORKING`, `SUBAGENTS`, `WATCHING`, `NEEDS YOU`, `QUESTION` (Claude Code only), `ERROR`, `YOUR TURN`, `UNKNOWN` | extension or hook |
 | `@env-copilot-since` | Decimal Unix seconds, or empty string | extension |
 | `@env-copilot-took` | Decimal non-negative seconds, or empty string | extension |
 | `@env-session-dir` | Absolute local session-state folder of the chat; unset when none/remote (Copilot only) | extension |
@@ -196,7 +196,7 @@ After a successful ensure:
 2. List windows with format `#{window_index}|#{window_active}|#{E:@hand-status-state}`
    (the state of each window's active pane, section 6.2). The current window is
    the one whose active flag is `1`.
-3. Tiers are checked in order: first `NEEDS YOU`, then `YOUR TURN`. `WAITING`,
+3. Tiers are checked in order: first `NEEDS YOU`, then `QUESTION`, then `YOUR TURN`. `WAITING`,
    `WORKING`, `READY` and every other state are never candidates. For a tier,
    candidates are windows whose state equals the tier label, whose index is
    between 1 and 10 inclusive, and which are not the current window.
@@ -603,19 +603,24 @@ is a number) and `since` to now. Rules, first match wins:
 3. Otherwise every change below also claims the pane when it is unowned or
    lacks the host marker.
 4. `SessionEnd`: unset all seven options (if the pane was owned).
-5. `PermissionRequest`, or `Notification` of type `permission_prompt`,
-   `elicitation_dialog`, `elicitation_url_dialog`, `agent_needs_input` or
-   `worker_permission_prompt`, from the chat or any of its agents: `NEEDS YOU`;
-   when the state was `WORKING` or `SUBAGENTS`, `@env-claude-resume` records it.
+5. `PreToolUse` of the question tool `AskUserQuestion`, `PermissionRequest`,
+   or `Notification` of type `permission_prompt`, `elicitation_dialog`,
+   `elicitation_url_dialog`, `agent_needs_input` or `worker_permission_prompt`,
+   from the chat or any of its agents: `QUESTION` when the event names the tool
+   `AskUserQuestion`, is that tool's `PreToolUse`, or arrives while the state is
+   already `QUESTION`; otherwise `NEEDS YOU`. When the state was `WORKING` or
+   `SUBAGENTS`, `@env-claude-resume` records it. The question tool keeps the
+   turn open, so a chat that asks through it shows `QUESTION` until it is
+   answered, whereas a question left in a reply ends the turn as `YOUR TURN`.
 5b. `PreToolUse`, `PostToolUse` or `PostToolUseFailure` from a child agent
-   while `NEEDS YOU`: the approval was given, so the state returns to
+   while `NEEDS YOU` or `QUESTION`: the answer was given, so the state returns to
    `@env-claude-resume` (or `WORKING`), which is unset.
 6. An event with a non-empty `agent_id` comes from a child agent and never
    starts or finishes the parent's turn. With an empty `agent_type` (Claude
    Code's own background agents, which report after `Stop`): no change.
    `SubagentStart` adds the id to `@env-claude-agents`; `SubagentStop` removes
    it. If the last one stopped while the state is `SUBAGENTS`, or `NEEDS YOU`
-   with `SUBAGENTS` to resume: finish. If one
+   or `QUESTION` with `SUBAGENTS` to resume: finish. If one
    is running while the state is `YOUR TURN`: `SUBAGENTS`. Any other child
    event: no change.
 7. `UserPromptSubmit`: `WORKING`, `took` unset; `since` is kept when the state
@@ -623,7 +628,7 @@ is a number) and `since` to now. Rules, first match wins:
    delivered as a prompt after `Stop` cannot be told apart from a typed one, so
    it starts a fresh run.
 8. `PreToolUse`, `PostToolUse`, `PostToolUseFailure`: `WORKING`; `since` is
-   kept while `WORKING`, `SUBAGENTS` or `NEEDS YOU`, otherwise now (and `took`
+   kept while `WORKING`, `SUBAGENTS`, `NEEDS YOU` or `QUESTION`, otherwise now (and `took`
    unset).
 9. `Notification` of type `idle_prompt` while `WORKING` or `SUBAGENTS`: finish
    (the turn ended without `Stop`, for example after an interrupt). Otherwise no
@@ -635,7 +640,7 @@ is a number) and `since` to now. Rules, first match wins:
 12. Anything else: no change.
 
 Rules 7, 8, 10 and 11 also unset `@env-claude-resume` when they leave
-`NEEDS YOU`.
+`NEEDS YOU` or `QUESTION`.
 
 Known limits, because Claude Code has no matching hook: approving a
 permission sends no event, so `NEEDS YOU` lasts until the next tool event of
@@ -761,6 +766,7 @@ text ` hotkeys ` (space-padded), followed by ending the range and resetting styl
 | `WATCHING` | `colour117` |
 | `SUBAGENTS` | `colour141` |
 | `NEEDS YOU` | `colour214` |
+| `QUESTION` | `colour213` |
 | `ERROR` | `colour203` |
 | `WORKING` | `colour75` |
 | `YOUR TURN` | `colour226` |
@@ -788,7 +794,7 @@ Timer (empty unless the pane is a chat (section 6.2) **and**
   an older extension). Example `4m12s @09:46`.
 - other idle states (i.e. `WAITING`): the duration of the age followed by
   ` ago`, e.g. `1m23s ago` (time since the turn finished).
-- anything else (`NEEDS YOU`, `ERROR`, `READY`, `COPILOT`, `UNKNOWN`): empty.
+- anything else (`NEEDS YOU`, `QUESTION`, `ERROR`, `READY`, `COPILOT`, `UNKNOWN`): empty.
 
 The display advances every second because `status-interval` is 1 and "now" is
 re-evaluated at each render; no process writes timer values.
@@ -1420,7 +1426,8 @@ empty, print `No file changes needed.`
 60. Given windows 2, 4, 6 `YOUR TURN`, windows 3 and 8 `NEEDS YOU`, and a
     waiting reason on 4 (state `WAITING`), starting on window 1, Cmd+`
     selects 3, 8, 3; from 1, two rapid presses end on 8; after 3 and 8 become
-    `WORKING`, presses select 2 then 6; after 2 becomes `WORKING`, a press shows
+    `WORKING`, window 5 set to `QUESTION` is selected next; after it becomes
+    `WORKING` and window 8 is selected again, presses select 2 then 6; after 2 becomes `WORKING`, a press shows
     `No other chats need attention` and window 6 stays selected.
 61. Given windows 2, 3, 5, 7 publishing `YOUR TURN`, `REVIEW`, `DECIDE`,
     `BLOCKED`, then each renders state `YOUR TURN` and successive attention
@@ -1551,10 +1558,13 @@ empty, print `No file changes needed.`
 94. Hook transitions (pure): every rule of section 5a.2, including the captured
     orders "Stop, then `SubagentStop` with an empty type" (stays `YOUR TURN`) and
     "Agent tool returns, `Stop`, `SubagentStop`, result prompt" (`SUBAGENTS`,
-    then `YOUR TURN` with the run's duration, then a fresh `WORKING`).
+    then `YOUR TURN` with the run's duration, then a fresh `WORKING`), and
+    "`AskUserQuestion` `PreToolUse`, its `PermissionRequest`, `PostToolUse`"
+    (`QUESTION` twice, then `WORKING` with the run's `since` kept).
 95. Hook against an isolated tmux server running `terminal/ai-agents.conf` and
     a non-shell foreground program: unclaimed `WORKING`; after `SessionStart`
-    `READY`; `NEEDS YOU` on a permission request; `YOUR TURN` with timer
+    `READY`; `NEEDS YOU` on a permission request; `QUESTION` (colour213) while
+    `AskUserQuestion` is open; `YOUR TURN` with timer
     `1m15s @HH:MM` after a 75 s turn; unchanged by a later empty-type
     `SubagentStop`; every option unset after `SessionEnd`; a pane in another
     tmux session is never touched. Outside tmux or with

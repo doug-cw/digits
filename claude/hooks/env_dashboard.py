@@ -8,7 +8,7 @@ pane options the Copilot ``env-dashboard`` extension writes, so
 
     @env-dashboard-owner   this chat's session id (claims the pane)
     @env-dashboard-host    "claude": marks the pane as a Claude Code chat
-    @env-copilot-state     READY, WORKING, SUBAGENTS, NEEDS YOU, YOUR TURN, ERROR
+    @env-copilot-state     READY, WORKING, SUBAGENTS, NEEDS YOU, QUESTION, YOUR TURN, ERROR
     @env-copilot-since     start of the run, or when the turn finished
     @env-copilot-took      length of the finished turn, in seconds
     @env-claude-agents     ids of this chat's running subagents (space separated)
@@ -47,6 +47,8 @@ INPUT_NOTIFICATIONS = (
     "agent_needs_input",
     "worker_permission_prompt",
 )
+QUESTION_TOOL = "AskUserQuestion"
+WAITING_ON_USER = ("NEEDS YOU", "QUESTION")
 TMUX = "tmux"
 TMUX_TIMEOUT = 2
 
@@ -67,6 +69,10 @@ def _needs_input(name, event):
     return name == "PermissionRequest" or (
         name == "Notification" and event.get("notification_type") in INPUT_NOTIFICATIONS
     )
+
+
+def _asks_question(name, event):
+    return name == "PreToolUse" and event.get("tool_name") == QUESTION_TOOL
 
 
 def _finish(current, now, label="YOUR TURN"):
@@ -105,16 +111,20 @@ def transition(current, event, now):
     if name == "SessionEnd":
         return {option: None for option in OPTIONS} if owner else {}
 
-    if _needs_input(name, event):
+    asking = _asks_question(name, event)
+    if asking or _needs_input(name, event):
         # Checked before the child-agent rule: a subagent waiting for approval
         # needs the user just as much as the main chat does. Remember the
         # running state, so the subagent's next tool event can restore it.
-        changes = dict(claim, **{STATE: "NEEDS YOU"})
+        # The question tool (and any prompt raised while it is open) is a
+        # QUESTION; anything else needs an approval.
+        question = asking or event.get("tool_name") == QUESTION_TOOL or state == "QUESTION"
+        changes = dict(claim, **{STATE: "QUESTION" if question else "NEEDS YOU"})
         if state in RUNNING:
             changes[RESUME] = state
         return changes
 
-    if agent_id and state == "NEEDS YOU" and name in TOOL_EVENTS:
+    if agent_id and state in WAITING_ON_USER and name in TOOL_EVENTS:
         # The subagent's tool ran, so the approval was given.
         return dict(claim, **{STATE: current.get(RESUME) or "WORKING", RESUME: None})
 
@@ -133,7 +143,7 @@ def transition(current, event, now):
             return {}
         changes = dict(claim, **{AGENTS: " ".join(agents) or None})
         waiting_on_subagents = state == "SUBAGENTS" or (
-            state == "NEEDS YOU" and current.get(RESUME) == "SUBAGENTS"
+            state in WAITING_ON_USER and current.get(RESUME) == "SUBAGENTS"
         )
         if not agents and waiting_on_subagents:
             changes.update(_finish(current, now))
@@ -158,7 +168,7 @@ def transition(current, event, now):
         if state != "WORKING":
             changes[STATE] = "WORKING"
             changes[RESUME] = None
-        if not current.get(SINCE, "").isdigit() or state not in RUNNING + ("NEEDS YOU",):
+        if not current.get(SINCE, "").isdigit() or state not in RUNNING + WAITING_ON_USER:
             changes[SINCE] = str(now)
             changes[TOOK] = None
         return changes

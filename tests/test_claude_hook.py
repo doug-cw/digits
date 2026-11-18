@@ -113,6 +113,28 @@ class TransitionTests(unittest.TestCase):
         replay.send(event("UserPromptSubmit", prompt="queued"), 125)
         self.assertEqual((replay.state, replay.options[SINCE]), ("WORKING", "121"))
 
+    def test_question_tool_shows_question_until_answered(self):
+        replay = Replay(**{OWNER: SESSION, HOST: "claude", STATE: "WORKING", SINCE: "100"})
+        replay.send(event("PreToolUse", tool_name="AskUserQuestion"), 110)
+        self.assertEqual((replay.state, replay.options[RESUME]), ("QUESTION", "WORKING"))
+        # The dialog may also raise a permission prompt; it stays a question.
+        replay.send(event("PermissionRequest", tool_name="AskUserQuestion"), 111)
+        replay.send(event("Notification", notification_type="permission_prompt"), 112)
+        self.assertEqual(replay.state, "QUESTION")
+        replay.send(event("PostToolUse", tool_name="AskUserQuestion"), 140)
+        self.assertEqual((replay.state, replay.options[SINCE], replay.options[RESUME]), ("WORKING", "100", ""))
+        # Any other approval is still NEEDS YOU.
+        replay.send(event("PermissionRequest", tool_name="Bash"), 150)
+        self.assertEqual(replay.state, "NEEDS YOU")
+
+    def test_subagent_question_resumes_the_run(self):
+        replay = Replay(**{OWNER: SESSION, HOST: "claude", STATE: "SUBAGENTS", SINCE: "100", AGENTS: "sub1"})
+        child = {"agent_id": "sub1", "agent_type": "general-purpose"}
+        replay.send(event("PreToolUse", tool_name="AskUserQuestion", **child), 110)
+        self.assertEqual((replay.state, replay.options[RESUME]), ("QUESTION", "SUBAGENTS"))
+        replay.send(event("PostToolUse", tool_name="AskUserQuestion", **child), 130)
+        self.assertEqual((replay.state, replay.options[SINCE]), ("SUBAGENTS", "100"))
+
     def test_subagent_permission_prompt_needs_you(self):
         replay = Replay(**{OWNER: SESSION, STATE: "SUBAGENTS", SINCE: "100", AGENTS: "sub1"})
         replay.send(event("PermissionRequest", agent_id="sub1", agent_type="general-purpose"), 110)
@@ -275,6 +297,10 @@ class TmuxTests(unittest.TestCase):
         self.send(event("PermissionRequest", tool_name="Bash"), 101)
         self.assertEqual(self.evaluate("#{E:@hand-status-state}"), "NEEDS YOU")
         self.send(event("PostToolUse", tool_name="Bash"), 102)
+        self.send(event("PreToolUse", tool_name="AskUserQuestion"), 103)
+        self.assertEqual(self.evaluate("#{E:@hand-status-state}"), "QUESTION")
+        self.assertEqual(self.evaluate("#{E:@hand-status-state-style}"), "#[fg=colour213]")
+        self.send(event("PostToolUse", tool_name="AskUserQuestion"), 104)
         self.send(event("Stop"), 175)
         self.assertEqual(self.evaluate("#{E:@hand-status-state}"), "YOUR TURN")
         self.assertEqual(self.evaluate("#{@env-copilot-took}"), "75")
