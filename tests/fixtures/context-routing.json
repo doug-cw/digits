@@ -280,5 +280,11 @@
     "prompt": "What does ls -la show?",
     "routes": [],
     "expected": "Answer directly and fetch no data, issue-tracker or infrastructure page."
+  },
+  {
+    "id": "batched-ask-overflow",
+    "prompt": "Seven PRs each need a decision between merge, rebase or skip. Ask me about all of them; your question tool only takes four questions per call.",
+    "routes": [],
+    "expected": "Send one numbered plain-text list with the options and a recommended default per PR, and take the answers from a single reply; do not split the approval across several prompts."
   }
 ]

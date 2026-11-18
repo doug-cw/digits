@@ -17,7 +17,7 @@ Usage: `/digits:update-shared-workflows [repository path] [owner/repo ...]`
 - Shared repositories come from, in order: `owner/repo` arguments; the
   `shared_workflow_repos` binding in
   `~/.config/digits/context/tool-and-repo-bindings.md` (comma-separated
-  `owner/repo` list); otherwise one `ask_user` question. The helper has no
+  `owner/repo` list); otherwise one batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit). The helper has no
   built-in list, so pass each repository with its own `--repo`. Confirm each
   one exists with `gh repo view <owner/repo>`; never guess names.
 
@@ -72,7 +72,7 @@ the two tags. Record the risk, the local changes needed, and links.
 
 ### 4. Approval
 
-One `ask_user` listing, per repository: current version(s), target version,
+One batched ask listing, per repository: current version(s), target version,
 affected files, risk, and local changes. Same-major is the default scope. A
 cross-major update needs its own explicit confirmation for that repository,
 and its required local changes ship in the same change.

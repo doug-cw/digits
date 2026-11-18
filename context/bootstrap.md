@@ -51,8 +51,15 @@ kept out of this file and live in private bindings on the user's machine.
   stuck, say what happens next, who does it and what decision is needed. Commands
   target the shell recorded in the private bindings, falling back to POSIX `sh`. Paths
   are absolute; a local file the user might open by clicking gets a full `file:///`
-  link; references point at the real PR, run, ticket or source. Ask for approval in
-  plain text, and write reader-facing documents as local drafts first. Keep
+  link; references point at the real PR, run, ticket or source. Write reader-facing
+  documents as local drafts first. A *batched ask* is one call to the host's question
+  tool (`ask_user` in Copilot CLI, `AskUserQuestion` in Claude Code) covering every
+  pending decision, with its questions and options in plain text (no Markdown tables,
+  links, bold or code fences). If they do not
+  fit one call (Claude Code allows at most four questions of four options each), send
+  them instead as one numbered plain-text list, each item with its options and a
+  recommended default, and take the answers from a single reply; never split one
+  approval across several prompts. Keep
   replies to one or two short paragraphs unless a plan or report was requested or the
   problem is genuinely complex. Do not narrate routine tool calls or repeat caveats that
   have not changed.

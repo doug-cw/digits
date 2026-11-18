@@ -107,7 +107,7 @@ one-off errors, transient task state or unverified claims.
 
 Write `proposal.json` next to it following `report-contract.md` in this
 directory. Print absolute `file:///` links and, for Markdown, a ready
-`md-view '<absolute path>'` command. Ask through `ask_user` (plain text) with
+`md-view '<absolute path>'` command. Ask through a batched ask (the Digits bootstrap's Communication rule: one `ask_user` or `AskUserQuestion` call, or one numbered list when the decisions do not fit) in plain text, with
 approve, revise or cancel; present permission or policy changes separately; edit
 nothing while waiting. When no change is justified, propose "no changes" and ask
 for approval to close the review; never invent edits.
