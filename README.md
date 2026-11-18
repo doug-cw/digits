@@ -42,7 +42,8 @@ versions. Issues and pull requests are welcome.
 - Python 3.9 or newer.
 - Node.js.
 - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli).
-- fish, because the launcher opens a fish login shell in every environment.
+- Optional: fish. The launcher opens a fish login shell in every environment
+  when fish is installed, and your login shell (`$SHELL`) otherwise.
 - Optional: [Ghostty](https://ghostty.org/) for the keyboard shortcuts, and
   Visual Studio Code for the `md-view` Markdown viewer.
 

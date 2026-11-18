@@ -98,6 +98,9 @@ the **idle label set**; the dashboard treats every member as `YOUR TURN`.
 
 The tmux executable is the first `tmux` on `PATH`, falling back to the bare
 name `tmux`. The fish executable is the first `fish` on `PATH`, or absent.
+The login shell is the value of `SHELL`, or absent. The **environment shell**
+is fish when present; otherwise the login shell, when it is an absolute path
+to an executable regular file; otherwise absent.
 
 Every tmux call is run with captured text output; its stdout is returned with
 surrounding whitespace stripped. A non-zero exit of any tmux call other than
@@ -134,11 +137,12 @@ Ensure performs, in order:
    directory that is not a symlink; otherwise fail with a message containing
    `Missing independent environment:` and the path. All these checks finish
    before anything is created.
-6. If at least one window is missing and fish is absent, fail with a message
-   stating that fish is required to create environment shells.
-7. Each new shell runs the command `/usr/bin/env -u VIRTUAL_ENV <fish> -l`
-   (a fish login shell with `VIRTUAL_ENV` removed, so a virtualenv active in
-   the launching shell does not leak in). Its start directory (`-c`) is the
+6. If at least one window is missing and the environment shell is absent,
+   fail with a message stating that a login shell is required to create
+   environment shells (install fish or set `SHELL`).
+7. Each new shell runs the command `/usr/bin/env -u VIRTUAL_ENV <shell> -l`,
+   where `<shell>` is the environment shell (a login shell with `VIRTUAL_ENV`
+   removed, so a virtualenv active in the launching shell does not leak in). Its start directory (`-c`) is the
    environment directory.
 8. New session only: create it detached with the first missing window
    (window 1's name and directory), printing that window's id; then set the
@@ -237,11 +241,11 @@ never a candidate.
 The launcher MUST be importable as a module from its path (without executing
 `main`) and expose replaceable module-level hooks that every function reads at
 call time: the home directory, the configuration path, the fish executable
-path, the function that runs one tmux command and returns stripped stdout, and
-the function that lists session names. It MUST also expose the window table,
+path, the login shell path, the function that runs one tmux command and
+returns stripped stdout, and the function that lists session names. It MUST also expose the window table,
 the session name, the target prefix, and callable entry points for ensure,
 next-attention and Markdown (the reference uses `HOME`, `CONFIG`, `FISH`,
-`tmux`, `list_sessions`, `WINDOWS`, `SESSION`, `TARGET`, `TMUX`,
+`LOGIN_SHELL`, `tmux`, `list_sessions`, `WINDOWS`, `SESSION`, `TARGET`, `TMUX`,
 `ensure_session`, `focus_next_attention`, `show_markdown(pane, client=None)`;
 equivalent names are acceptable if tests are adapted).
 
@@ -839,7 +843,7 @@ MUST have no side effects (the command line runs only under `__main__`).
 
 Prerequisites (checked for install previews and installs, **not** for
 uninstall): the platform must be macOS (`Darwin`), else fail with a message
-that only macOS is supported; `tmux`, `fish`, `node` and `copilot` must be on
+that only macOS is supported; `tmux`, `node` and `copilot` must be on
 `PATH`, else fail listing the missing names comma-separated after a request to
 install them first.
 
@@ -1332,9 +1336,9 @@ empty, print `No file changes needed.`
     window that must be created, then ensure fails with
     `Missing independent environment:` before any window is created; when the
     window already exists, the directory is not checked.
-74. Given windows are missing and fish is not on `PATH`, then ensure fails
-    stating fish is required and creates nothing; given no windows are
-    missing, fish is not required.
+74. Given windows are missing and neither fish nor a usable login shell is
+    available, then ensure fails stating a login shell is required and creates
+    nothing; given no windows are missing, no shell is required.
 75. Given `~/.tmux/ai-agents.conf` is absent, then the launcher fails with
     `Missing session configuration:` and exit 1.
 76. Given `--no-attach`, then stdout is exactly `Ready: ai-agents` and the
@@ -1370,3 +1374,7 @@ empty, print `No file changes needed.`
     non-shell foreground program in a pane, `WORKING`.
 88. Given `md-view` fails for the Markdown shortcut, then the last stderr line
     (or `md-view failed`) is shown as a tmux message and the launcher exits 0.
+89. Given fish is absent, then the environment shell is the login shell when
+    it is an absolute path to an executable file, and absent for a relative
+    name or a missing file; new windows start in that shell. Given fish is
+    present, it wins over the login shell.

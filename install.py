@@ -57,7 +57,7 @@ ENVIRONMENTS = (
     "right_pinky",
 )
 
-PREREQUISITES = ("tmux", "fish", "node", "copilot")
+PREREQUISITES = ("tmux", "node", "copilot")
 
 
 def _depth_key(relative):

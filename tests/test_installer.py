@@ -299,7 +299,7 @@ class EdgeCaseTests(InstallerTestCase):
             for arguments in ((), ("--apply",)):
                 code, _out, err = self.run_main(*arguments)
                 self.assertEqual(code, 1)
-                self.assertIn("tmux, fish, node, copilot", err)
+                self.assertIn("tmux, node, copilot", err)
         with mock.patch.object(install.platform, "system", lambda: "Linux"):
             code, _out, err = self.run_main()
             self.assertEqual(code, 1)
