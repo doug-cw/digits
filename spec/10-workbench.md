@@ -98,8 +98,9 @@ the **idle label set**; the dashboard treats every member as `YOUR TURN`.
 | `ai-agents --no-attach` | Ensure the session under the lock, print `Ready: ai-agents` to stdout, exit 0 |
 | `ai-agents --next-attention` | Jump to the next chat needing attention (3.4). No lock, no session creation |
 | `ai-agents --markdown PANE [--client CLIENT]` | Open the newest session Markdown of tmux pane `PANE` (3.5). No lock, no session creation |
+| `ai-agents --restart [ENV...]` | Restart idle Claude Code chats, all ten or the named environments (3.8). No lock, no session creation |
 
-- `--no-attach`, `--next-attention` and `--markdown` are mutually exclusive;
+- `--no-attach`, `--next-attention`, `--markdown` and `--restart` are mutually exclusive;
   combining them is an argument-parser usage error (exit 2, usage on stderr).
 - `--client NAME` is accepted with any mode but hidden from `--help`; it is only
   meaningful with `--markdown`, where status messages are shown on that client.
@@ -257,6 +258,47 @@ next-attention and Markdown (the reference uses `HOME`, `CONFIG`, `FISH`,
 `LOGIN_SHELL`, `tmux`, `list_sessions`, `WINDOWS`, `SESSION`, `TARGET`, `TMUX`,
 `ensure_session`, `focus_next_attention`, `show_markdown(pane, client=None)`;
 equivalent names are acceptable if tests are adapted).
+
+### 3.8 Restarting chats (`--restart [ENV...]`)
+
+A chat keeps the environment of the shell it started from, so a profile change
+(for example a new `DIGITS_PLUGIN_DIR`) reaches it only after a restart. The
+`restart-chats` skill (spec 30 §11a) runs this mode.
+
+1. Check `@ai-agents-managed` as in 3.4 step 1. Resolve the names: none means
+   windows 1–10; otherwise each name, lower-cased with runs of spaces and `-`
+   turned into `_`, must be one of the ten directories, else fail with
+   `unknown environment '<name>'; use one of: left-pinky, …`. Duplicates
+   collapse; windows are handled in index order. Fail as in 3.2 when there is
+   no environment shell.
+2. For each window, read `pane_id`, `pane_pid`, `pane_current_command`,
+   `@env-copilot-state`, `@env-dashboard-owner` and `pane_dead`, and print one
+   line `<window name>: skipped, <reason>` (exit status unaffected) when:
+   the pane is dead; its PID is the launcher's own process or an ancestor
+   (the chat running the command); the command is a plain shell
+   (`no chat running`); the command is `copilot`; the owner is not a Claude
+   Code session id (a UUID); the state is not `READY` or `YOUR TURN`
+   (`busy (<state>)`); the captured screen shows `esc to interrupt`; the
+   composer, the box between the last two horizontal rules (`─` × 8 or more),
+   holds anything but the prompt (`❯`, `›` or `>`) and dim (SGR 2) placeholder
+   text; or the resource gate fails (memory under 30% free per
+   `memory_pressure` where available, or a one-minute load at or above the
+   core count), checked just before each restart.
+3. Restart: type `/exit`, pause (1 s; Claude Code drops an Enter sent with the
+   text), press Enter; wait up to 30 s for a plain shell; type
+   `exec /usr/bin/env -u VIRTUAL_ENV <environment shell> -l` and Enter; after
+   2 s wait for a plain shell again; type `digits-claude --continue` when
+   `<CLAUDE_CONFIG_DIR or HOME/.claude>/projects/<slug>/` holds a `*.jsonl`
+   file (slug: the pane's resolved current path with every character other
+   than an ASCII letter or digit replaced by `-`), else `digits-claude`, and
+   Enter; wait up to 30 s for a command other than a plain shell, then 3 s,
+   and check it is still running. Print `<name>: restarted, continuing its
+   conversation` or `<name>: restarted, new conversation`; on a timeout print
+   `<name>: failed, <detail>` and continue. Wait 5 s after a restart before
+   the next one.
+4. Exit 1 when any restart failed, else 0. Pauses, timeouts, the chat command,
+   the Claude configuration folder and the resource gate are replaceable
+   module hooks.
 
 ## 4. Markdown viewer `bin/md-view`
 
@@ -1477,6 +1519,20 @@ empty, print `No file changes needed.`
 70. Given `@hand-status-now` fixed at 200000, the duration for elapsed −5, 0,
     59, 60, 3599, 3600, 86399, 86400, 90000 seconds is `0s`, `0s`, `59s`,
     `1m0s`, `59m59s`, `1h0m`, `23h59m`, `1d0h`, `1d1h`.
+
+97. Given stub chats (a `digits-claude` on `PATH` that draws a composer, sets
+    `READY` and a UUID owner, and quits on `/exit`) in windows 2–6, a saved
+    conversation for `left_ring`, a draft in window 4, `WORKING` in window 5
+    and window 6 standing in for the launcher's own chat, when
+    `--restart` runs, then windows 2 and 3 restart (with and without
+    `--continue`) in their original panes and every other window reports the
+    reason it was skipped.
+98. Named environments are resolved and de-duplicated, a failing resource
+    gate skips the chat, and an unknown name exits 1.
+99. A chat that ignores `/exit`, or one that quits right after starting, is
+    reported as failed and the exit status is 1.
+100–104. Composer classification, skip reasons, conversation lookup, the
+    resource gate and mode exclusivity are unit-tested.
 
 ### 11.6 Markdown viewer
 

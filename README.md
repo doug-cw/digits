@@ -213,6 +213,14 @@ arguments on (`digits-claude --continue`). To load the skills straight from a
 checkout, so edits take effect after `/reload-skills`, set
 `DIGITS_PLUGIN_DIR=/path/to/digits/plugin` in your shell profile.
 
+Chats keep the shell environment they started with. After changing your
+profile, run `ai-agents --restart` (or `/digits:restart-chats` in a chat) to
+restart the idle chats one at a time: each gets `/exit`, a fresh login shell
+and `digits-claude --continue`. Busy chats, chats with a draft in the
+composer, Copilot chats and the chat running the command are left alone and
+listed with the reason. Name environments to limit it, for example
+`ai-agents --restart left-ring right-pinky`.
+
 Claude Code chats show READY, WORKING, SUBAGENTS, NEEDS YOU, QUESTION, YOUR
 TURN and ERROR. QUESTION is shown while an AskUserQuestion prompt is open and
 clears when you answer it. WATCHING is not produced, and the Markdown shortcut has no session
@@ -345,10 +353,10 @@ install.py           dashboard installer
 context_install.py   context library installer
 ```
 
-The plugin ships fourteen skills: `assess-and-address`, `challenge-pass`,
+The plugin ships fifteen skills: `assess-and-address`, `challenge-pass`,
 `done`, `draft-pr-sweep`, `inter-env`, `investigate`, `rebase-pr`,
-`request-review`, `review-reactions`, `self-improve`, `standup-update`,
-`summarize`, `token-usage` and `update-shared-workflows`.
+`request-review`, `restart-chats`, `review-reactions`, `self-improve`,
+`standup-update`, `summarize`, `token-usage` and `update-shared-workflows`.
 
 ## Verification
 

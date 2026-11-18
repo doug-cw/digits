@@ -447,7 +447,7 @@ Valid JSON object with exactly these keys:
 | `plugins` | array with exactly one object |
 | `plugins[0].name` | `"digits"` |
 | `plugins[0].description` | one sentence, written fresh, saying the plugin provides approval-guarded Copilot CLI workflows covering: PR review handling, rebases, investigations, standup drafting, coordination across several environments, and context improvement that proposes before it changes anything |
-| `plugins[0].version` | `"1.0.4"` — MUST equal `version` in the plugin manifest (`30-plugin-core.md`); a test there enforces it |
+| `plugins[0].version` | `"1.0.5"` — MUST equal `version` in the plugin manifest (`30-plugin-core.md`); a test there enforces it |
 | `plugins[0].source` | `"./plugin"` |
 
 Install commands that depend on this file: `copilot plugin marketplace add
@@ -796,7 +796,7 @@ Bulleted, bold leads:
   `tests/`, `docs/`, `spec/`, `install.py`, `context_install.py`,
   `CLEAN_ROOM.md`. (`spec/` and `CLEAN_ROOM.md` are additions of the clean
   implementation.)
-- A sentence naming the fourteen plugin skills in alphabetical order (the list
+- A sentence naming the fifteen plugin skills in alphabetical order (the list
   in `30-plugin-core.md`).
 
 ### 8.9 `## Verification`

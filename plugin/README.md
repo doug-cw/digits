@@ -21,6 +21,7 @@ leaves your machine.
 | `/digits:done` | User-only: recaps the chat, marks it `[DONE]` and opens a fresh session |
 | `/digits:summarize` | Read-only four-part recap of the current chat (goals, progress, blocking questions, next steps), also saved in the session workspace |
 | `/digits:token-usage` | Read-only token usage and estimated list-price cost per task, project, branch, environment, model or day, from local Claude Code transcripts |
+| `/digits:restart-chats` | Claude Code only: restarts the idle chats in the ten windows, one at a time, so they pick up a changed shell profile or plugin; skips busy chats, drafts and itself |
 
 This is a personal workflow package, not organization policy. No organization
 defaults (channels, sites, repositories, people) are built in; you supply them
@@ -39,11 +40,11 @@ copilot skill list --json
 ```
 
 The plugin list should show `digits` exactly once, enabled. The skill list should
-show each of these fourteen names exactly once with source `plugin`:
+show each of these fifteen names exactly once with source `plugin`:
 `standup-update`, `request-review`, `review-reactions`, `draft-pr-sweep`,
 `assess-and-address`, `rebase-pr`, `update-shared-workflows`, `investigate`,
 `challenge-pass`, `inter-env`, `self-improve`, `done`, `summarize`,
-`token-usage`.
+`token-usage`, `restart-chats`.
 
 The plugin name supplies the `digits:` command namespace. Install it once at user
 scope, not once per environment. Built-in and third-party skills are left alone.
