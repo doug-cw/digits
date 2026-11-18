@@ -559,7 +559,8 @@ class PackageTests(unittest.TestCase):
             with self.subTest(script=script.name):
                 self.assertEqual(stat.S_IMODE(os.stat(script).st_mode), 0o755)
                 self.assertEqual(subprocess.run(["bash", "-n", str(script)]).returncode, 0)
-        for helper in (SKILLS / "self-improve" / "checkpoint.py", SKILLS / "inter-env" / "inter_env.py"):
+        for helper in (SKILLS / "self-improve" / "checkpoint.py", SKILLS / "self-improve" / "session_history.py",
+                       SKILLS / "inter-env" / "inter_env.py"):
             self.assertTrue(helper.read_text(encoding="utf-8").startswith("#!/usr/bin/env python3\n"))
             self.assertTrue(os.stat(helper).st_mode & stat.S_IXUSR)
         node = subprocess.run(["which", "node"], capture_output=True, text=True).stdout.strip()

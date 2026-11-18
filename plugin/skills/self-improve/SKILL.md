@@ -57,7 +57,12 @@ through the helper (no hand edits, no other session's database).
 Inventory local and cloud history for all ten environment roots with
 `session_store_sql`, including long-lived, resumed or newly numbered sessions
 and sessions with empty or generic summaries. Discover first (bounded), then
-read per session.
+read per session. On Claude Code, which has no `session_store_sql`, use
+`python3 "<absolute-skill-directory>/session_history.py"` (read-only, paged
+JSON): `sessions --root <env root>` (repeat per root) `--since <query_since>
+--until <reviewed_through> --limit 60 --offset <n>` to discover, `turns
+--session <id>` to read, `turns --grep <term>` to search. It reads only local
+transcripts, so the cloud/local split below applies to Copilot.
 
 - Cloud: `sessions` rows updated no earlier than `query_since` and created no
   later than `reviewed_through`, ordered, 60 per page, paginated (never assume the

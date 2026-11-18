@@ -172,7 +172,9 @@ Statements the body MUST make (own wording):
      warehouse query history, and which version is deployed in each environment
      (the default branch proves nothing about deployment).
    - Prior knowledge: tickets in every status (closed as Done or Won't Do
-     included), earlier chat sessions via `session_store_sql`, decisions
+     included), earlier chat sessions (Copilot: `session_store_sql`; Claude
+     Code: `../self-improve/session_history.py turns --grep <term>` from the
+     installed skill directory, spec 30 section 12.6), decisions
      recorded in chat, current and past incidents. Never open a duplicate
      ticket for something already tracked.
    - Origin: locate the commit that introduced the behavior with pickaxe and

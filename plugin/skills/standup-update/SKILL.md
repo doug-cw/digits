@@ -81,7 +81,10 @@ line or are dropped. Aim for two to four workstreams.
    timestamp. Merge cloud/local duplicates by content and trust the date written
    inside each update, since local turn timestamps can belong to the next turn.
    If a reply only gave a file path, open that draft (and, if needed, the newest
-   two or three dated files in the output directory); it still counts. Capture
+   two or three dated files in the output directory); it still counts. On
+   Claude Code use `python3 "<absolute-skill-directory>/../self-improve/session_history.py"
+   turns --role assistant --since <date> --grep '<first field label>' --grep
+   digits/standup/ --limit 3` instead (a turn matches if it contains either term); it reads local history only. Capture
    open themes, last reported status, promised readiness and blockers. Drafts
    show what was said, not that work happened or was submitted. If none exist,
    say so instead of inventing a baseline.
@@ -91,7 +94,9 @@ line or are dropped. Aim for two to four workstreams.
 3. **Recent work chats (mandatory).** Query the `sessions` table across every
    environment, not just this checkout: updated within 7 days, newest first, at
    most 60 rows; repeat with `source: "local"` and a date-prefix filter if
-   expected chats are missing or summaries look stale. A missing or generic
+   expected chats are missing or summaries look stale. On Claude Code run the
+   same helper's `sessions --since <date> --limit 60`, then `turns --session
+   <id> --limit 6`. A missing or generic
    summary is not proof of no work. For likely work sessions read checkpoints or
    the newest few turns, both user and assistant text, because corrections,
    pauses and ownership calls often live only in user turns. Go further back only

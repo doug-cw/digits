@@ -209,6 +209,7 @@ installed `SKILL.md`), never from a checkout or a copied file.
 | 6 | `update-shared-workflows/shared_refs.py` | edits workflow files, and only when `--write` is given | tags via `gh api`; local workflow files |
 | 7 | `inter-env/inter_env.py` | private drafts and receipts; types into tmux only during an approved `send` | tmux, ps, lsof, saved session history |
 | 8 | `self-improve/checkpoint.py` | the private checkpoint file | its own state file; the installed context |
+| 9 | `self-improve/session_history.py` | none; prints bounded, paged JSON | Claude Code transcripts under `~/.claude/projects` |
 
 `standup-update` pre-approves its read-only tools with an `allowed-tools` line in
 Copilot CLI syntax. Those entries match no Claude Code tool, so there it asks for each
