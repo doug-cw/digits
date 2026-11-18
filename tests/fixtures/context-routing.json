@@ -286,5 +286,13 @@
     "prompt": "Seven PRs each need a decision between merge, rebase or skip. Ask me about all of them; your question tool only takes four questions per call.",
     "routes": [],
     "expected": "Send one numbered plain-text list with the options and a recommended default per PR, and take the answers from a single reply; do not split the approval across several prompts."
+  },
+  {
+    "id": "fan-out-resource-gate",
+    "prompt": "Split this port across four environments and have each one run the full test suite and try it in a headless chat.",
+    "routes": [
+      "workflows/continuity.md"
+    ],
+    "expected": "Check free memory and load first; give each environment only targeted tests, keep one full suite and at most one extra agent process running at a time, and repeat those limits in every brief."
   }
 ]

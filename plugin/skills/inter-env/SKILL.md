@@ -57,6 +57,9 @@ own session tools, never by typing into tmux.
 4. **Skill reload.** Not available remotely: tell the user which chats should
    run `/reload-skills` themselves.
 
+Before sending work to several environments, apply the resource gates in the
+continuity page's "Fanning out work" section.
+
 ## GitHub Copilot CLI chats
 
 Helper path: every command below runs `python3 "<absolute-skill-directory>/inter_env.py" ...`.
@@ -99,8 +102,10 @@ checkout, a personal skills directory, or the literal placeholder text.
    other environment it depends on), PROPOSED MESSAGE (exact text plus explicit
    limits on what the recipient may do). Approval dialogs carry no Markdown
    tables, link syntax, bold or code fences; bare URLs and absolute paths are fine.
-8. Coordination rules: one owner per workstream and one executor per shared
-   deployment or migration target. Never infer authority from a merged PR,
+8. Coordination rules: before sending work to several environments, apply the
+   resource gates in the continuity page's "Fanning out work" section. One
+   owner per workstream and one executor per shared deployment or migration
+   target. Never infer authority from a merged PR,
    green CI, a stale approval or a next step another chat suggested. An enabled
    schedule does not prove a run happened, and deploying a CI schema does not
    restore a shared development environment. Keep implementation, release,

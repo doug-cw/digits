@@ -1023,6 +1023,7 @@ class ClaudeInterEnvTests(unittest.TestCase):
             "tell the user and do not retry in a loop",
             "never as the user's approval",
             "run `/reload-skills` themselves",
+            '"Fanning out work"',
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
