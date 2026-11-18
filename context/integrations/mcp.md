@@ -1,6 +1,6 @@
 # MCP discovery, schema, execution, and access
 
-Use when tools seem to be missing, discovery returns nothing, or someone suggests repairing an integration or its authentication.
+Use when tools seem to be missing, discovery returns nothing, someone suggests repairing an integration or its authentication, or a task drives a browser.
 Scope: diagnosis using the tools already available; this page is never a route to alternative credentials.
 Sources: the loaded tool contracts, results of real harmless calls, and the integration's official documentation.
 Reviewed: 2026-11-16.
@@ -11,7 +11,7 @@ Recheck: the exact loaded or deferred schema, the response to the call, and whet
 1. A deferred tool whose schema has not been loaded must be found through the provided discovery mechanism before it is used. Never invent function names or arguments.
 2. A loaded schema that exactly matches may be used. A later search that comes back empty neither removes it nor proves the tool is unavailable.
 3. When you need to diagnose, make a harmless read through that schema, within the scope the user already has. Never send a message or perform a write as a connectivity check.
-4. On a genuine authentication, permission, or connection error, stop and report the integration, the operation or capability that was refused, and the setup that is needed. No second attempt may switch to a different account, credential, role, or host, nor go through raw HTTP or a headless helper. Before accepting the error as genuine, call the currently documented operation, confirm the error concerns the intended object and identity, and where possible read the identity's effective capability (for example GitHub's `viewerPermission`). When a badly formed path yields a 404, or a stale or mismatched call yields FORBIDDEN, the mistake lies in how the tool was called, not in what access exists; correcting the call under the same identity is not evasion.
+4. On a genuine authentication, permission, or connection error, stop and report the integration, the operation or capability that was refused, and the setup that is needed. No second attempt may switch to a different account, credential, role, or host, nor go through raw HTTP, a headless helper or browser automation. Before accepting the error as genuine, call the currently documented operation, confirm the error concerns the intended object and identity, and where possible read the identity's effective capability (for example GitHub's `viewerPermission`). When a badly formed path yields a 404, or a stale or mismatched call yields FORBIDDEN, the mistake lies in how the tool was called, not in what access exists; correcting the call under the same identity is not evasion.
 5. If there is neither a schema nor a successful harmless read, state which evidence is missing. Do not upgrade a guess such as "the registry is stale" into a confirmed root cause.
 
 Further rules:
@@ -20,6 +20,11 @@ Further rules:
 - Prefer `gh` for GitHub reads and writes, under its usual approval rules.
 - Some vendor MCP servers (Datadog is one example) come with dedicated setup or configuration skills; set them up via those skills and operate them via their own tools. A broken integration is not an invitation to improvise direct API requests.
 - Signing in a headless helper needs its own approval as a distinct workflow; it is not a plan B when interactive sign-in did not work.
+
+## Browser automation
+
+- Before the first action, confirm which browser and profile the automation is attached to and which account is signed in. If it is not the one the task needs, stop and ask; never sign in or switch profiles to get past it.
+- On admin and settings pages, submitting a form, pressing Enter in a field, subscribing, adding to a list and opening an object for editing are writes that need approval. Read the values back before saving.
 
 ## Two canonical examples
 

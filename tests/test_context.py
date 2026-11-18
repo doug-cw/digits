@@ -609,7 +609,7 @@ class CorpusTests(unittest.TestCase):
 
     def test_14_expected_files(self):
         self.assertEqual(set(self.pages()), EXPECTED_PAGES)
-        self.assertEqual(json.loads((CONTEXT / "version.json").read_text()), {"version": "1.4.0"})
+        self.assertEqual(json.loads((CONTEXT / "version.json").read_text()), {"version": "1.5.0"})
 
     def test_14_line_limit_and_metadata(self):
         for name, path in self.pages().items():
@@ -641,7 +641,7 @@ class CorpusTests(unittest.TestCase):
 
     def test_14_routing_fixtures(self):
         cases = json.loads(FIXTURES.read_text())
-        self.assertEqual(len(cases), 37)
+        self.assertEqual(len(cases), 42)
         bootstrap = (CONTEXT / "bootstrap.md").read_text()
         ids = set()
         for case in cases:
