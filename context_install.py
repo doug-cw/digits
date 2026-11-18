@@ -2,8 +2,9 @@
 """Preview-first installer for the Digits context library.
 
 Renders ``context/`` into an immutable, content-addressed release under the
-destination home, generates the auto-loaded Copilot entry file from
-``context/bootstrap.md``, and keeps a private ownership receipt, a retained
+destination home, generates the host's entry file from ``context/bootstrap.md``
+(Copilot loads it automatically; for Claude Code the user links it in as a
+folder's CLAUDE.md or imports it), and keeps a private ownership receipt, a retained
 versions catalog and rollback snapshots. Nothing is written without --apply.
 """
 
@@ -25,19 +26,46 @@ if str(_HERE) not in sys.path:
 import install  # noqa: E402  (workbench installer module, same directory)
 
 SOURCE = _HERE / "context"
-ENTRY = ".copilot/copilot-instructions.md"
-LIBRARY = ".copilot/context/digits/releases"
-STATE = ".local/state/digits/context"
-RECEIPT = STATE + "/receipt.json"
-RETAINED = STATE + "/retained.json"
-BACKUPS = STATE + "/backups"
 PRIVATE_ROOT = ".config/digits/context"
 FILE_MODE = 0o600
 DIR_MODE = 0o700
 
-RELEASE_FILE_RE = re.compile(re.escape(LIBRARY) + r"/[a-f0-9]{16}/[A-Za-z0-9_/-]+\.md")
+# Where each agent host gets the generated entry file, the releases and the
+# installer's private state. Each host keeps its own receipt, so both can be
+# installed side by side. Claude Code does not discover the entry on its own:
+# a CLAUDE.md the user chooses imports it (see CLAUDE_IMPORT).
+HOSTS = {
+    "copilot": {
+        "entry": ".copilot/copilot-instructions.md",
+        "library": ".copilot/context/digits/releases",
+        "state": ".local/state/digits/context",
+    },
+    "claude": {
+        "entry": ".claude/digits/CLAUDE.md",
+        "library": ".claude/digits/context/releases",
+        "state": ".local/state/digits/context-claude",
+    },
+}
+CLAUDE_IMPORT = "@~/.claude/digits/CLAUDE.md"
 SOURCE_NAME_RE = re.compile(r"[A-Za-z0-9_/-]+\.md")
-BACKUP_RE = re.compile(re.escape(BACKUPS) + r"/[a-f0-9]{32}\.json")
+
+
+def use_host(name):
+    """Point the installer's paths at one host's layout (default: copilot)."""
+    global HOST, ENTRY, LIBRARY, STATE, RECEIPT, RETAINED, BACKUPS, RELEASE_FILE_RE, BACKUP_RE
+    layout = HOSTS[name]
+    HOST = name
+    ENTRY = layout["entry"]
+    LIBRARY = layout["library"]
+    STATE = layout["state"]
+    RECEIPT = STATE + "/receipt.json"
+    RETAINED = STATE + "/retained.json"
+    BACKUPS = STATE + "/backups"
+    RELEASE_FILE_RE = re.compile(re.escape(LIBRARY) + r"/[a-f0-9]{16}/[A-Za-z0-9_/-]+\.md")
+    BACKUP_RE = re.compile(re.escape(BACKUPS) + r"/[a-f0-9]{32}\.json")
+
+
+use_host("copilot")
 HASH_RE = re.compile(r"[a-f0-9]{64}")
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 LEFTOVER_PLACEHOLDER_RE = re.compile(r"\{\{[A-Z_]+\}\}")
@@ -446,12 +474,24 @@ def make_plan(home, adopt_sha256=None, rollback=False):
 # Command line
 
 
+CLAUDE_IMPORT_NOTE = (
+    "Claude Code does not load the entry on its own, and the installer never edits your "
+    "CLAUDE.md files. For the dashboard's chats only, link it into each environment folder "
+    "(an import from outside a folder needs a one-time approval per folder):\n"
+    "    ln -s ~/.claude/digits/CLAUDE.md ~/<environment>/CLAUDE.md\n"
+    "For every chat, add this line to ~/.claude/CLAUDE.md instead:\n"
+    "    " + CLAUDE_IMPORT
+)
+
+
 def _parser():
     parser = argparse.ArgumentParser(
         prog="context_install.py",
         description="Preview (default) or apply the Digits context installation.",
     )
     parser.add_argument("--home", default=None, help="destination home (default: your home)")
+    parser.add_argument("--host", choices=sorted(HOSTS), default="copilot",
+                        help="agent host to install the context for (default: copilot)")
     parser.add_argument("--apply", action="store_true", help="perform the plan instead of previewing")
     parser.add_argument("--rollback", action="store_true", help="restore the latest snapshot")
     parser.add_argument("--adopt-sha256", dest="adopt_sha256", default=None, metavar="HASH",
@@ -478,19 +518,29 @@ def main(argv=None):
     raw = args.home if args.home is not None else str(Path.home())
     home = Path(os.path.abspath(os.path.expanduser(raw)))
     adopt = None if args.rollback else args.adopt_sha256
+    previous_host = HOST
+    use_host(args.host)
     try:
         if args.apply:
             _apply(home, adopt, args.rollback)
-            print("Context updated. Idle chats running the plugin's digits-refresh extension reload it "
-                  "before their next turn; chats started without it need an idle /restart.")
+            if HOST == "claude":
+                print("Context updated. Claude Code reads it when a chat starts; running chats keep "
+                      "the copy they loaded until you /clear them or start a new chat.")
+            else:
+                print("Context updated. Idle chats running the plugin's digits-refresh extension reload it "
+                      "before their next turn; chats started without it need an idle /restart.")
             print("No chat was restarted.")
         else:
             plan = make_plan(home, adopt_sha256=adopt, rollback=args.rollback)
             install.show_plan(home, plan)
             print("Preview only: no files or sessions changed. Re-run with --apply to make these changes.")
+        if HOST == "claude" and not args.rollback:
+            print(CLAUDE_IMPORT_NOTE)
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         print("Context installer: %s" % error, file=sys.stderr)
         return 1
+    finally:
+        use_host(previous_host)
     return 0
 
 

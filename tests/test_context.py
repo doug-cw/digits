@@ -196,7 +196,7 @@ class InstallCycleTests(ContextTestCase):
         self.assertIn("Generated Digits context", first)
         self.assertIn("snapshot", first)
         self.assertEqual(self.apply()["writes"], {})
-        for absent in (".copilot/instructions", ".copilot/settings.json", ".config"):
+        for absent in (".copilot/instructions", ".copilot/settings.json", ".claude/CLAUDE.md", ".config"):
             self.assertFalse(os.path.lexists(self.home / absent), absent)
 
     def test_03_adoption_hash_and_rollback(self):
@@ -325,9 +325,10 @@ class InstallCycleTests(ContextTestCase):
     def test_10_symlinked_parent_and_unowned_release(self):
         outside = self.tmp / "outside"
         outside.mkdir()
-        (self.home / ".copilot").symlink_to(outside)
+        top = self.home / ci.ENTRY.split("/")[0]
+        top.symlink_to(outside)
         self.assertFails("symlink", self.plan)
-        (self.home / ".copilot").unlink()
+        top.unlink()
         files = ci.payload(self.home)
         name = next(n for n in files if n != ci.ENTRY)
         target = self.home / name
@@ -354,7 +355,7 @@ class InstallCycleTests(ContextTestCase):
                     install.execute(self.home, plan)
         self.assertIn("simulated receipt failure", str(caught.exception))
         self.assertEqual(self.entry().read_text(), "original\n")
-        self.assertEqual(listing(self.home), [".copilot", ".copilot/copilot-instructions.md"])
+        self.assertEqual(listing(self.home), sorted(ci._ancestors(ci.ENTRY) + [ci.ENTRY]))
 
     def test_13_rollback_keeps_unowned_files_in_owned_dirs(self):
         self.apply()
@@ -402,7 +403,8 @@ class InstallCycleTests(ContextTestCase):
         self.assertFalse(os.path.lexists(self.home / ci.RECEIPT))
 
     def test_25_modes(self):
-        existing = self.home / ".copilot"
+        top = ci.ENTRY.split("/")[0]
+        existing = self.home / top
         existing.mkdir(mode=0o755)
         os.chmod(existing, 0o755)
         umask = os.umask(0)
@@ -413,7 +415,7 @@ class InstallCycleTests(ContextTestCase):
         files = list(plan["writes"]) + [ci.RETAINED]
         for name in files:
             self.assertEqual(mode_of(self.home / name), 0o600, name)
-        self.assertNotIn(".copilot", plan["create"])
+        self.assertNotIn(top, plan["create"])
         for directory in plan["create"]:
             self.assertEqual(mode_of(self.home / directory), 0o700 & ~umask, directory)
         self.assertEqual(mode_of(existing), 0o755)
@@ -670,6 +672,68 @@ class CorpusTests(unittest.TestCase):
         owned += sorted((ROOT / "examples" / "private-bindings").glob("*.md"))
         for path in owned:
             self.assertIsNone(HOME_PATH_RE.search(path.read_text()), path)
+
+
+class ClaudeHostMixin:
+    """Run a test class against the Claude Code layout instead of Copilot's."""
+
+    def setUp(self):
+        super().setUp()
+        ci.use_host("claude")
+        self.addCleanup(ci.use_host, "copilot")
+
+
+class ClaudeInstallCycleTests(ClaudeHostMixin, InstallCycleTests):
+    pass
+
+
+class ClaudeValidationTests(ClaudeHostMixin, ValidationTests):
+    pass
+
+
+class ClaudeHostTests(ContextTestCase):
+    def test_layout_is_separate_from_copilot_and_user_files(self):
+        self.assertEqual(ci.HOSTS["claude"]["entry"], ".claude/digits/CLAUDE.md")
+        self.assertEqual(ci.CLAUDE_IMPORT, "@~/" + ci.HOSTS["claude"]["entry"])
+        user_memory = self.home / ".claude" / "CLAUDE.md"
+        user_memory.parent.mkdir()
+        user_memory.write_text("mine\n")
+        status, out, err = self.run_main("--home", str(self.home), "--host", "claude", "--apply")
+        self.assertEqual(status, 0, err)
+        self.assertIn(ci.CLAUDE_IMPORT, out)
+        self.assertIn("never edits your", out)
+        self.assertIn("ln -s ~/" + ci.HOSTS["claude"]["entry"], out)
+        self.assertEqual(user_memory.read_text(), "mine\n")
+        self.assertFalse(os.path.lexists(self.home / ".copilot"))
+        entry = (self.home / ".claude" / "digits" / "CLAUDE.md").read_text()
+        self.assertIn("Generated Digits context", entry)
+        self.assertIn(str(self.home / ".claude" / "digits" / "context" / "releases"), entry)
+        self.assertTrue((self.home / ".local/state/digits/context-claude/receipt.json").is_file())
+
+    def test_hosts_install_side_by_side(self):
+        status, _, err = self.run_main("--home", str(self.home), "--apply")
+        self.assertEqual(status, 0, err)
+        copilot_receipt = (self.home / ".local/state/digits/context/receipt.json").read_bytes()
+        status, _, err = self.run_main("--home", str(self.home), "--host", "claude", "--apply")
+        self.assertEqual(status, 0, err)
+        self.assertEqual((self.home / ".local/state/digits/context/receipt.json").read_bytes(), copilot_receipt)
+        status, _, err = self.run_main("--home", str(self.home), "--host", "claude", "--rollback", "--apply")
+        self.assertEqual(status, 0, err)
+        self.assertFalse(os.path.lexists(self.home / ".claude/digits/CLAUDE.md"))
+        self.assertTrue((self.home / ".copilot/copilot-instructions.md").is_file())
+        self.assertEqual(ci.HOST, "copilot")
+
+    def test_rollback_prints_no_claude_note(self):
+        status, _, err = self.run_main("--home", str(self.home), "--host", "claude", "--apply")
+        self.assertEqual(status, 0, err)
+        status, out, err = self.run_main("--home", str(self.home), "--host", "claude", "--rollback")
+        self.assertEqual(status, 0, err)
+        self.assertNotIn(ci.CLAUDE_IMPORT, out)
+
+    def test_copilot_output_has_no_claude_note(self):
+        status, out, err = self.run_main("--home", str(self.home))
+        self.assertEqual(status, 0, err)
+        self.assertNotIn(ci.CLAUDE_IMPORT, out)
 
 
 if __name__ == "__main__":

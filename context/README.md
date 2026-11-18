@@ -12,6 +12,9 @@ Recheck: after any change to this source, the host, a workflow, or a private bin
   The installer, `context_install.py` in the repository root, generates
   `~/.copilot/copilot-instructions.md` from it and copies every other page into a release
   directory whose name is a content hash. Once written, a release is never changed.
+  With `--host claude` it writes `~/.claude/digits/CLAUDE.md` instead, which Claude Code
+  loads only where it is linked in as a folder's `CLAUDE.md`, or imported with
+  `@~/.claude/digits/CLAUDE.md`.
 - At install time relative links are rewritten as absolute `file:///` links, and three
   placeholders are substituted: home, context root and private root (each is the
   upper-case name wrapped in two pairs of curly braces). Any other upper-case token in
