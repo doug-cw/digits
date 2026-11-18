@@ -32,6 +32,7 @@ checked by tests and MUST appear verbatim in the corresponding message.
 ```text
 plugin/
   plugin.json
+  .claude-plugin/plugin.json   # Claude Code manifest (section 1.3a)
   README.md
   com.github.copilot/
     extensions/
@@ -117,6 +118,17 @@ workflows: evidence-backed standup drafts, review requests and status reactions,
 PR feedback handling, draft PR triage, safe rebases, shared workflow bumps,
 investigations, cross-environment coordination and proposal-first context
 upkeep."
+
+### 1.3a `.claude-plugin/plugin.json` (MUST)
+
+Claude Code ignores `plugin.json` at the package root and reads
+`.claude-plugin/plugin.json` instead. That file is a JSON object with exactly
+the keys `name`, `version`, `description` and `license`, in this order. `name`,
+`version` and `license` equal those of `plugin.json`; `description` is one line
+covering the same capability areas without naming a host. With it, `claude
+--plugin-dir <repo>/plugin` loads every skill as `/digits:<name>`. The Copilot
+extensions are not loaded by Claude Code, so `/digits:done` and the automatic
+context refresh are Copilot-only.
 
 ### 1.4 Skill frontmatter conventions (MUST)
 

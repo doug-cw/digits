@@ -1,0 +1,42 @@
+#!/bin/sh
+# Start Claude Code in a Digits environment.
+#
+# Run it instead of `claude` inside one of the ten environment folders (or any
+# folder below one). It names the session after the environment, for example
+# `left-pinky`, so chats can find and message each other with Claude Code's own
+# session tools, and it loads the Digits plugin from DIGITS_PLUGIN_DIR when that
+# is set. Any arguments are passed on to `claude` unchanged (for example
+# `--continue`). Outside an environment it starts `claude` without a name.
+#
+#   DIGITS_PLUGIN_DIR  plugin folder to load with --plugin-dir (for example a
+#                      checkout's plugin/); unset: rely on an installed plugin
+#   DIGITS_CLAUDE      the Claude Code command to run (default: claude)
+
+root=$(cd "$HOME" 2>/dev/null && pwd -P) || root=
+here=$(pwd -P)
+environment=
+if [ -n "$root" ]; then
+    case "$here/" in
+        "$root"/?*/)
+            rest=${here#"$root"/}
+            environment=${rest%%/*}
+            ;;
+    esac
+fi
+
+case "$environment" in
+    left_pinky | left_ring | left_middle | left_pointer | left_thumb | \
+    right_thumb | right_pointer | right_middle | right_ring | right_pinky)
+        set -- -n "$(printf '%s' "$environment" | tr '_' '-')" "$@"
+        ;;
+esac
+
+if [ -n "${DIGITS_PLUGIN_DIR:-}" ]; then
+    if [ ! -f "$DIGITS_PLUGIN_DIR/.claude-plugin/plugin.json" ]; then
+        echo "digits-claude: no Claude plugin manifest in DIGITS_PLUGIN_DIR=$DIGITS_PLUGIN_DIR" >&2
+        exit 1
+    fi
+    set -- --plugin-dir "$DIGITS_PLUGIN_DIR" "$@"
+fi
+
+exec "${DIGITS_CLAUDE:-claude}" "$@"

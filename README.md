@@ -43,7 +43,8 @@ versions. Issues and pull requests are welcome.
 - Node.js.
 - [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli), or
   [Claude Code](https://code.claude.com/docs) for the dashboard (see
-  [Claude Code](#claude-code)). The plugin and context library target Copilot.
+  [Claude Code](#claude-code)). The plugin also loads in Claude Code (its two
+  extensions are Copilot-only); the context library targets Copilot.
 - Optional: fish. The launcher opens a fish login shell in every environment
   when fish is installed, and your login shell (`$SHELL`) otherwise.
 - Optional: [Ghostty](https://ghostty.org/) for the keyboard shortcuts, and
@@ -92,6 +93,13 @@ copilot plugin install digits@digits
 [plugin/README.md](plugin/README.md) explains how to update the plugin and how
 to set up each skill. Some skills only become useful once you have written
 local, non-secret bindings for them.
+
+For Claude Code, load the same folder as a plugin. The skills appear as
+`/digits:<name>`, except `/digits:done`, which needs the Copilot extensions:
+
+```bash
+claude --plugin-dir /path/to/digits/plugin
+```
 
 ### Context library
 
@@ -172,13 +180,19 @@ SDK, so a hook script publishes the same states:
 
 ```bash
 python3 install.py --host claude            # preview
-python3 install.py --host claude --apply    # installs ~/.claude/hooks/digits-env-dashboard.py
+python3 install.py --host claude --apply    # installs the hook and ~/.local/bin/digits-claude
 ```
 
 The installer never edits Claude Code settings. Merge the `hooks` from
 [claude/settings.json](claude/settings.json) into `~/.claude/settings.json`
-yourself, then start `claude` in any environment. Chats that were already
-running keep the hooks they started with.
+yourself. Chats that were already running keep the hooks they started with.
+
+Start chats with `digits-claude` rather than `claude`. It names each session
+after its environment (`left-pinky` … `right-pinky`), so chats can list and
+message each other with Claude Code's own session tools, and passes any other
+arguments on (`digits-claude --continue`). To load the skills straight from a
+checkout, so edits take effect after `/reload-skills`, set
+`DIGITS_PLUGIN_DIR=/path/to/digits/plugin` in your shell profile.
 
 Claude Code chats show READY, WORKING, SUBAGENTS, NEEDS YOU, YOUR TURN and
 ERROR. WATCHING is not produced, and the Markdown shortcut has no session

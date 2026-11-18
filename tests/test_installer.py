@@ -326,6 +326,10 @@ class ClaudeHostTests(InstallerTestCase):
         hook = self.home / self.HOOK
         self.assertEqual(hook.read_bytes(), (REPO / "claude/hooks/env_dashboard.py").read_bytes())
         self.assertEqual(stat.S_IMODE(hook.stat().st_mode), 0o755)
+        launcher = self.home / ".local/bin/digits-claude"
+        self.assertEqual(launcher.read_bytes(), (REPO / "claude/bin/digits-claude").read_bytes())
+        self.assertEqual(stat.S_IMODE(launcher.stat().st_mode), 0o755)
+        self.assertIn("digits-claude", out)
         self.assertFalse(os.path.lexists(str(self.home / ".copilot")))
         self.assertFalse(os.path.lexists(str(self.home / ".claude/settings.json")))
         for environment in install.ENVIRONMENTS:
