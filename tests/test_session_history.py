@@ -23,6 +23,7 @@ spec.loader.exec_module(history)
 ENV_A = "/srv/envs/left_pinky"
 ENV_A2 = "/srv/envs/left_pinky2"  # slug-prefix neighbour of ENV_A
 ENV_B = "/srv/envs/right_ring"
+ENV_C = "/srv/envs/left_thumb"
 
 
 def user(stamp, text, cwd, **extra):
@@ -35,6 +36,27 @@ def user(stamp, text, cwd, **extra):
 def assistant(stamp, text, cwd, **extra):
     record = {"type": "assistant", "timestamp": stamp, "cwd": cwd,
               "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+    record.update(extra)
+    return record
+
+
+def tool_use(stamp, name, call_id, cwd, **extra):
+    return assistant(stamp, "", cwd, message={"content": [
+        {"type": "tool_use", "id": call_id, "name": name, "input": {}}]}, **extra)
+
+
+def tool_result(stamp, call_id, content, cwd, record=None, **extra):
+    block = {"type": "tool_result", "tool_use_id": call_id, "content": content}
+    block.update(extra)
+    return user(stamp, None, cwd, origin=None, message={"role": "user", "content": [block]}, **(record or {}))
+
+
+def queued(stamp, prompt, origin, cwd, **extra):
+    attachment = {"type": "queued_command", "prompt": prompt, "commandMode": "prompt"}
+    if origin is not None:
+        attachment["origin"] = origin
+    record = {"type": "attachment", "timestamp": stamp, "cwd": cwd, "isSidechain": False,
+              "attachment": attachment}
     record.update(extra)
     return record
 
@@ -127,6 +149,7 @@ class SessionHistoryTests(unittest.TestCase):
         self.assertEqual(texts, ["Please fix the widget parser", "No, that was wrong: revert it",
                                  "Draft my standup"])
         self.assertEqual(result["items"][2]["timestamp"], "2026-03-05T10:00:00Z")
+        self.assertEqual({t["kind"] for t in result["items"]}, {"prompt"})
         self.assertNotIn("secret tool output", json.dumps(result))
 
     def test_grep_across_environments_newest_first_and_skips_nested(self):
@@ -140,7 +163,89 @@ class SessionHistoryTests(unittest.TestCase):
                                        "--since", "2026-03-02T09:02:00Z", "--max-chars", "12")
         self.assertEqual(result["items"], [{
             "session_id": "aaaa0001", "cwd": ENV_A + "/work", "timestamp": "2026-03-02T09:03:00Z",
-            "role": "assistant", "text": "Reverted. xx", "truncated": True}])
+            "role": "assistant", "kind": "reply", "text": "Reverted. xx", "truncated": True}])
+
+    def write_queued_and_answers(self):
+        c = ENV_C
+        question = "Which gadget layout should ship first?"
+        self.write(c, "dddd0001", [
+            user("2026-03-07T09:00:00Z", "Plan the gadget rollout", c),
+            tool_use("2026-03-07T09:00:10Z", "AskUserQuestion", "call-ask", c),
+            queued("2026-03-07T09:00:15Z", "<system-reminder>x</system-reminder>also cover the gadget docs",
+                   {"kind": "human"}, c),
+            queued("2026-03-07T09:00:16Z", "peer gadget note", {"kind": "peer", "from": "x"}, c),
+            queued("2026-03-07T09:00:17Z", "gadget task done", {"kind": "task-notification"}, c,
+                   attachment={"type": "queued_command", "prompt": "gadget task done",
+                               "commandMode": "task-notification", "origin": {"kind": "task-notification"}}),
+            queued("2026-03-07T09:00:18Z", "unlabelled gadget", None, c),
+            queued("2026-03-07T09:00:19Z", "sub-agent gadget", {"kind": "human"}, c, isSidechain=True),
+            {"type": "attachment", "timestamp": "2026-03-07T09:00:19Z", "cwd": c,
+             "attachment": {"type": "file", "prompt": "file gadget"}},
+            tool_result("2026-03-07T09:00:20Z", "call-ask", f'Questions answered: "{question}"="Layout B"', c,
+                        record={"toolUseResult": {
+                            "questions": [{"question": question}],
+                            "answers": {question: "Layout B"},
+                            "annotations": {question: {"preview": "drafted gadget preview",
+                                                       "notes": "keep it small"}}}}),
+            tool_use("2026-03-07T09:00:30Z", "Bash", "call-bash", c),
+            tool_result("2026-03-07T09:00:31Z", "call-bash", "gadget tool output", c),
+            tool_use("2026-03-07T09:00:40Z", "ExitPlanMode", "call-plan", c),
+            tool_result("2026-03-07T09:00:50Z", "call-plan",
+                        [{"type": "text", "text": "Rejected.\n## Plan\ndrafted gadget plan body\n"
+                                                  "split the gadget step"}], c,
+                        record={"userFeedback": "split the gadget step"}, is_error=True),
+            assistant("2026-03-07T09:01:00Z", "Split the gadget step.", c),
+            tool_use("2026-03-07T09:01:10Z", "ExitPlanMode", "call-plan-2", c),
+            tool_result("2026-03-07T09:01:20Z", "call-plan-2",
+                        "Approved.\n\n## Approved Plan:\ndrafted gadget plan body", c,
+                        record={"toolUseResult": {"plan": "drafted gadget plan body"}}),
+            tool_use("2026-03-07T09:01:30Z", "AskUserQuestion", "call-ask-2", c),
+            tool_result("2026-03-07T09:01:40Z", "call-ask-2", '"Older gadget question?"="Yes"', c),
+            tool_use("2026-03-07T09:01:50Z", "AskUserQuestion", "call-ask-3", c),
+            tool_result("2026-03-07T09:02:00Z", "call-ask-3", "Rejected gadget question", c, is_error=True),
+            # The same words typed again later are a separate submission, so they stay.
+            user("2026-03-07T09:03:00Z", "also cover the gadget docs", c),
+        ])
+        # Ids are per transcript: a result for another file's question is not an answer.
+        self.write(c, "dddd0002", [
+            tool_result("2026-03-07T10:00:00Z", "call-ask", "stray gadget result", c),
+        ])
+
+    def test_queued_human_prompts_and_answers_are_user_turns(self):
+        self.write_queued_and_answers()
+        code, result, _ = self.run_cli("turns", "--root", ENV_C, "--role", "user", "--order", "oldest")
+        self.assertEqual(code, 0)
+        self.assertEqual([(t["kind"], t["text"]) for t in result["items"]], [
+            ("prompt", "Plan the gadget rollout"),
+            ("queued", "also cover the gadget docs"),
+            ("answer", "[answered] Layout B (notes: keep it small)"),
+            ("answer", "[plan rejected] split the gadget step"),
+            ("answer", "[plan approved]"),
+            ("answer", "[answered]"),
+            ("answer", "[questions rejected]"),
+            ("prompt", "also cover the gadget docs")])
+        self.assertEqual({t["role"] for t in result["items"]}, {"user"})
+        code, result, _ = self.run_cli("sessions", "--root", ENV_C)
+        counts = {s["session_id"]: (s["user_turns"], s["assistant_turns"]) for s in result["items"]}
+        self.assertEqual(counts, {"dddd0001": (8, 1), "dddd0002": (0, 0)})
+
+    def test_answers_never_carry_assistant_words(self):
+        self.write_queued_and_answers()
+        code, result, _ = self.run_cli("turns", "--root", ENV_C, "--grep", "gadget", "--order", "oldest")
+        self.assertEqual([(t["role"], t["kind"]) for t in result["items"]], [
+            ("user", "prompt"), ("user", "queued"), ("user", "answer"), ("assistant", "reply"),
+            ("user", "prompt")])
+        code, result, _ = self.run_cli("turns", "--root", ENV_C, "--role", "user")
+        dumped = json.dumps(result)
+        for drafted in ("drafted", "layout should ship", "Older gadget question", "Approved Plan",
+                        "tool output", "stray"):
+            self.assertNotIn(drafted, dumped)
+
+    def test_answers_count_even_when_only_user_turns_are_read_in_a_late_window(self):
+        self.write_queued_and_answers()
+        code, result, _ = self.run_cli("turns", "--session", "dddd0001", "--role", "user",
+                                       "--since", "2026-03-07T09:00:45Z", "--until", "2026-03-07T09:01:30Z")
+        self.assertEqual([t["text"] for t in result["items"]], ["[plan approved]", "[plan rejected] split the gadget step"])
 
     def test_old_files_are_skipped_by_mtime(self):
         old = self.projects / history.slug(ENV_B) / "bbbb0001.jsonl"

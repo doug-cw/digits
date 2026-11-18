@@ -2,7 +2,7 @@
 
 Status: normative for the clean-room build. Read `00-overview.md` first; its
 conventions (Python 3.9 standard library, Node.js 22 ES modules, bash helpers,
-isolated tests, no hardcoded home paths, plugin version `1.0.3`, names) apply here.
+isolated tests, no hardcoded home paths, plugin version `1.0.4`, names) apply here.
 
 This file specifies:
 
@@ -112,7 +112,7 @@ A JSON object with exactly these five keys, in this order:
 |---|---|---|
 | 1 | `$schema` | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
 | 2 | `name` | `digits` |
-| 3 | `version` | `1.0.3` (must equal the marketplace entry's `version`) |
+| 3 | `version` | `1.0.4` (must equal the marketplace entry's `version`) |
 | 4 | `description` | One sentence, freshly worded, naming these capability areas: guarded Copilot CLI workflows for evidence-backed standup drafts; review requests and review-status reactions; PR feedback handling; draft PR sweeps; rebases; shared workflow version updates; investigations; coordination across environments; proposal-first improvement of the shared context. |
 | 5 | `license` | `MIT` |
 
@@ -1912,9 +1912,27 @@ sibling such as `R2` never matches `R`. Without `--root`, every session counts.
 **Turns.** A user turn is a `user` record that is not meta, a compaction summary,
 a sub-agent turn or a tool result, whose `origin.kind` is absent or `human`
 (peer and task-notification messages are excluded), with text left after
-`<system-reminder>` blocks are removed and not local-command output. An
-assistant turn is the text blocks of an `assistant` record; thinking and tool
-calls are not turns.
+`<system-reminder>` blocks are removed and not local-command output; its kind is
+`prompt`. A `queued` turn is an `attachment` record whose `attachment.type` is
+`queued_command` and whose `attachment.origin.kind` is `human`, with text from
+`attachment.prompt` under the same text rules (peer and task-notification
+origins, and a missing origin, are excluded). An `answer` turn is a `user`
+record's `tool_result` for an `AskUserQuestion` or `ExitPlanMode` call made
+earlier in the same transcript, and carries only the user's own words, never the
+question, plan or option preview the assistant wrote:
+- a rejection (`is_error`): `[plan rejected]` or `[questions rejected]`, followed
+  by the record's `userFeedback` when present;
+- an approved plan: `[plan approved]`;
+- answered questions: `[answered]` followed by each value of
+  `toolUseResult.answers`, joined with `; `, each with ` (notes: <notes>)` when
+  `toolUseResult.annotations` holds notes for that question; just `[answered]`
+  when there are no structured answers.
+
+A queued attachment and a later ordinary prompt with the same text are both
+turns: an attachment means the prompt was absorbed mid-turn and left the queue,
+so a matching later prompt is a separate submission. Sub-agent records are never
+turns. An assistant turn (kind `reply`) is the text blocks of an `assistant`
+record; thinking and tool calls are not turns.
 
 **CLI.** `session_history.py [--projects-dir PATH] <subcommand>`; every
 subcommand takes repeatable `--root`, `--since`, `--until` (UTC ISO timestamp
@@ -1930,7 +1948,7 @@ and `--offset` (0 or more), and prints one JSON object
   `--order oldest`; filters `--session` (repeatable), `--role
   user|assistant|both` (default both) and `--grep` (repeatable,
   case-insensitive substring, any match). Items carry exactly `session_id`,
-  `cwd`, `timestamp`, `role`, `text` (at most `--max-chars`, 1–4000, default
+  `cwd`, `timestamp`, `role`, `kind`, `text` (at most `--max-chars`, 1–4000, default
   600) and `truncated`.
 
 It never prints a whole transcript, tool output or any other record field.
